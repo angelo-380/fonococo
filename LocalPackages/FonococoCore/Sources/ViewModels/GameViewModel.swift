@@ -31,16 +31,23 @@ import Foundation
         guard let turn = activeTurn else { return nil }
         return room?.chains.first(where: { $0.id == turn.chainID })?.entries.last(where: { $0.id != turn.id })
     }
-    public func create(player: Player) async {
-        let id = UUID().uuidString
+    public func create(player: Player, playerLimit: Int = 4, roomID customID: String? = nil) async {
+        let id = customID ?? String(UUID().uuidString.prefix(6)).uppercased()
         do {
-            try await service.create(roomID: id, player: player, settings: RoomSettings(playerLimit: 12, writingSeconds: 60, drawingSeconds: 90))
+            try await service.create(roomID: id, player: player, settings: RoomSettings(playerLimit: min(8, max(2, playerLimit)), writingSeconds: 60, drawingSeconds: 90))
             roomID = id; connect(player: player)
         } catch { fail(error.localizedDescription) }
     }
     public func start() async {
         guard let room, let playerID, isHost else { return }
         do { try await service.start(roomID: room.id, playerID: playerID) }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    public func updatePlayerLimit(_ limit: Int) async {
+        guard let room, let playerID, isHost, room.phase == .lobby,
+              (2...8).contains(limit), limit >= room.players.count else { return }
+        do { try await service.updatePlayerLimit(roomID: room.id, playerID: playerID, limit: limit) }
         catch { errorMessage = error.localizedDescription }
     }
 
