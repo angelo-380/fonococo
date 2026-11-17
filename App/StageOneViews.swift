@@ -386,13 +386,66 @@ private extension View { func glass() -> some View { background(.ultraThinMateri
     }
     public func advance(roomID: String) async throws { guard let room = rooms[roomID] else { throw ServiceError.missingRoom }; let next = GameEngine.advance(room, now: Date()); rooms[roomID] = next; publish(next) }
     public func observe(roomID: String) -> AsyncThrowingStream<RoomSnapshot, Error> { AsyncThrowingStream { continuation in let key = UUID(); streams[roomID, default: [:]][key] = continuation; if let room = rooms[roomID] { continuation.yield(room) }; continuation.onTermination = { @Sendable _ in Task { @MainActor [weak self] in self?.streams[roomID]?.removeValue(forKey: key) } } } }
-    public func submit(roomID: String, entry: ChainEntry, turnID: String) async throws { guard let room = rooms[roomID] else { throw ServiceError.missingRoom }; rooms[roomID] = try GameEngine.contribute(room, entry: entry, turnID: turnID, now: Date()); if let next = rooms[roomID] { publish(next) } }
+    public func submit(roomID: String, entry: ChainEntry, turnID: String) async throws {
+        guard let room = rooms[roomID] else { throw ServiceError.missingRoom }
+        var updated = try GameEngine.contribute(room, entry: entry, turnID: turnID, now: Date())
+        if let practicePlayer = room.players.first(where: { $0.id.hasPrefix("local-demo-opponent-") }) {
+            let pendingTurns = updated.turns.filter { turn in
+                turn.playerID == practicePlayer.id &&
+                !updated.chains.flatMap(\.entries).contains(where: { $0.id == turn.id })
+            }
+            for turn in pendingTurns {
+                let practiceEntry: ChainEntry
+                switch turn.kind {
+                case .writing:
+                    practiceEntry = ChainEntry(id: turn.id, authorID: practicePlayer.id, text: "Rival de prueba")
+                case .drawing:
+                    let url = URL(string: "rtdb-media://local-demo/practice-opponent.png")!
+                    practiceEntry = ChainEntry(id: turn.id, authorID: practicePlayer.id, drawingURL: url)
+                }
+                updated = try GameEngine.contribute(updated, entry: practiceEntry, turnID: turn.id, now: Date())
+            }
+        }
+        rooms[roomID] = updated
+        publish(updated)
+    }
     private func publish(_ room: RoomSnapshot) { streams[room.id]?.values.forEach { $0.yield(room) } }
 }
 
 @MainActor public final class LocalDemoMediaService: MediaStorageServicing {
     public init() {}
-    public func download(_ url: URL) async throws -> Data { throw ServiceError.configuration }
-    public func uploadPNG(_ data: Data, roomID: String) async throws -> URL { throw ServiceError.configuration }
-    public func uploadAudio(fileURL: URL, roomID: String) async throws -> URL { throw ServiceError.configuration }
+    public func download(_ url: URL) async throws -> Data {
+        guard url.scheme == "rtdb-media", url.host == "local-demo" else { throw ServiceError.configuration }
+        if url.lastPathComponent == "practice-opponent.png" { return Self.practiceDrawing() }
+        return try Data(contentsOf: mediaDirectory().appendingPathComponent(url.lastPathComponent))
+    }
+    public func uploadPNG(_ data: Data, roomID: String) async throws -> URL { try store(data, fileExtension: "png") }
+    public func uploadAudio(fileURL: URL, roomID: String) async throws -> URL {
+        try store(Data(contentsOf: fileURL), fileExtension: fileURL.pathExtension.isEmpty ? "m4a" : fileURL.pathExtension)
+    }
+    private func store(_ data: Data, fileExtension: String) throws -> URL {
+        let name = "\(UUID().uuidString).\(fileExtension)"
+        try data.write(to: mediaDirectory().appendingPathComponent(name), options: .atomic)
+        guard let url = URL(string: "rtdb-media://local-demo/\(name)") else { throw ServiceError.invalidResponse }
+        return url
+    }
+    private func mediaDirectory() throws -> URL {
+        let documents = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        let directory = documents.appendingPathComponent("FonococoDemoMedia", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+    private static func practiceDrawing() -> Data {
+        let size = CGSize(width: 640, height: 400)
+        return UIGraphicsImageRenderer(size: size).pngData { renderer in
+            let context = renderer.cgContext
+            UIColor.white.setFill(); context.fill(CGRect(origin: .zero, size: size))
+            context.setLineCap(.round); context.setLineJoin(.round); context.setLineWidth(20)
+            context.setStrokeColor(UIColor(red: 0.27, green: 0.72, blue: 0.81, alpha: 1).cgColor)
+            context.move(to: CGPoint(x: 55, y: 315)); context.addLine(to: CGPoint(x: 215, y: 145)); context.addLine(to: CGPoint(x: 350, y: 315)); context.strokePath()
+            context.move(to: CGPoint(x: 265, y: 315)); context.addLine(to: CGPoint(x: 420, y: 125)); context.addLine(to: CGPoint(x: 585, y: 315)); context.strokePath()
+            context.setFillColor(UIColor(red: 1, green: 0.78, blue: 0.30, alpha: 1).cgColor)
+            context.fillEllipse(in: CGRect(x: 460, y: 35, width: 90, height: 90))
+        }
+    }
 }
