@@ -36,6 +36,19 @@ private struct GameProfile: Codable, Equatable {
 
 private typealias DemoFriend = StageOneFriend
 
+private enum SocialDemoStore {
+    static func load<Value: Decodable>(_ key: String, fallback: Value) -> Value {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let value = try? JSONDecoder().decode(Value.self, from: data) else { return fallback }
+        return value
+    }
+
+    static func save<Value: Encodable>(_ value: Value, key: String) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+}
+
 private enum MainTab: String, CaseIterable { case home = "Inicio", friends = "Amigos", profile = "Perfil" }
 private enum AppSheet: String, Identifiable { case createRoom, waitingRoom, matchmaking, editProfile, addFriend, signup, login; var id: String { rawValue } }
 
@@ -54,9 +67,9 @@ public struct StageOneRootView: View {
     @State private var roomCode = ""
     @State private var createdRoomName = ""
     @State private var booted = false
-    @State private var friends = [DemoFriend(username: "NubeDibuja", nickname: "Nube", avatar: "🦊"), DemoFriend(username: "PixelLima", nickname: "Mati", avatar: "🐸")]
-    @State private var incoming = [DemoFriend(username: "TintaLunar", nickname: "Luna", avatar: "🐱")]
-    @State private var outgoingFriends: [DemoFriend] = []
+    @State private var friends = SocialDemoStore.load("fonococo.social.friends.v1", fallback: [DemoFriend(username: "NubeDibuja", nickname: "Nube", avatar: "🦊"), DemoFriend(username: "PixelLima", nickname: "Mati", avatar: "🐸")])
+    @State private var incoming = SocialDemoStore.load("fonococo.social.incoming.v1", fallback: [DemoFriend(username: "TintaLunar", nickname: "Luna", avatar: "🐱")])
+    @State private var outgoingFriends = SocialDemoStore.load("fonococo.social.outgoing.v1", fallback: [DemoFriend]())
 
     public init(auth: AuthViewModel, game: GameViewModel, canvas: CanvasViewModel, album: AlbumViewModel, firebaseConfigured: Bool = false) {
         self.auth = auth; self.game = game; self.canvas = canvas; self.album = album; self.firebaseConfigured = firebaseConfigured
@@ -100,6 +113,9 @@ public struct StageOneRootView: View {
             value.save()
             if auth.player?.nickname != value.nickname, !value.nickname.isEmpty { auth.updateLocalNickname(value.nickname) }
         }
+        .onChange(of: friends) { _, value in SocialDemoStore.save(value, key: "fonococo.social.friends.v1") }
+        .onChange(of: incoming) { _, value in SocialDemoStore.save(value, key: "fonococo.social.incoming.v1") }
+        .onChange(of: outgoingFriends) { _, value in SocialDemoStore.save(value, key: "fonococo.social.outgoing.v1") }
         .onChange(of: auth.player?.id) { _, id in if id == nil { profile = GameProfile(); UserDefaults.standard.removeObject(forKey: "fonococo.profile.v1") } }
         .onChange(of: game.state) { _, phase in
             if phase == .writing || phase == .drawing || phase == .revealing { sheet = nil }
@@ -305,7 +321,7 @@ private struct AddFriendSheet: View {
     @State private var message: String?
     private let directory = [DemoFriend(username: "DoodleLima", nickname: "Doodle", avatar: "🦁"), DemoFriend(username: "MentaPixel", nickname: "Menta", avatar: "🐨"), DemoFriend(username: "TintaLunar", nickname: "Luna", avatar: "🐱")]
     var body: some View { VStack(spacing: 17) { Text("Agregar amigos").font(.system(size: 24, weight: .black, design: .rounded)); HStack { TextField("Nombre de usuario", text: $username).textInputAutocapitalization(.never).autocorrectionDisabled().padding(13).background(.white, in: RoundedRectangle(cornerRadius: 14)); Button("Buscar") { search() }.font(.system(size: 14, weight: .bold, design: .rounded)).padding(12).background(Aero.sky.opacity(0.35), in: RoundedRectangle(cornerRadius: 14)) }; if let friend = result { HStack { Text(friend.avatar).font(.system(size: 35)); VStack(alignment: .leading) { Text(friend.nickname).fontWeight(.bold); Text("@\(friend.username)").font(.caption).foregroundStyle(Aero.ink.opacity(0.55)) }; Spacer(); Button("Agregar") { outgoing.append(friend); message = "Solicitud enviada · demostración"; result = nil }.buttonStyle(.borderedProminent).tint(Aero.violet) }.padding(14).glass() }; if let message { Text(message).font(.system(size: 12, weight: .semibold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.65)) }; Spacer() }.padding(22).foregroundStyle(Aero.ink).background(Aero.backdrop) }
-    private func search() { let key = username.trimmingCharacters(in: .whitespacesAndNewlines); guard !key.isEmpty else { message = "Escribe un usuario."; return }; guard key.lowercased() != profile.username.lowercased() else { message = "No puedes agregarte a ti mismo."; return }; guard !friends.contains(where: { $0.username.lowercased() == key.lowercased() }) else { message = "Ya es tu amigo."; return }; result = directory.first { $0.username.lowercased() == key.lowercased() }; message = result == nil ? "No encontrado en el directorio local de demostración." : "Usuario encontrado · datos demo" }
+    private func search() { let key = username.trimmingCharacters(in: .whitespacesAndNewlines); guard !key.isEmpty else { message = "Escribe un usuario."; return }; guard key.lowercased() != profile.username.lowercased() else { message = "No puedes agregarte a ti mismo."; return }; guard !friends.contains(where: { $0.username.lowercased() == key.lowercased() }) else { message = "Ya es tu amigo."; return }; guard !outgoing.contains(where: { $0.username.lowercased() == key.lowercased() }) else { message = "Ya enviaste una solicitud."; return }; result = directory.first { $0.username.lowercased() == key.lowercased() }; message = result == nil ? "No encontrado en el directorio local de demostración." : "Usuario encontrado · datos demo" }
 }
 
 private struct AccountSheet: View {
