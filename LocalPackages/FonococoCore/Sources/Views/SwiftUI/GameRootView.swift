@@ -186,12 +186,27 @@ public struct GameRootView: View {
         case .revealing:
             Text("Álbum final").font(.system(size: 30, weight: .black, design: .rounded))
             ForEach(game.room?.chains ?? []) { chain in
-                VStack {
-                    Text("Cadena \(chain.id)")
+                VStack(alignment: .leading, spacing: 12) {
+                    let index = (game.room?.chains.firstIndex(where: { $0.id == chain.id }) ?? 0) + 1
+                    Label("Libro creativo \(index)", systemImage: "book.closed.fill")
+                        .font(.system(size: 17, weight: .heavy, design: .rounded))
                     ForEach(chain.entries) { entry in
-                        Text(entry.text ?? "Dibujo de \(entry.authorID)")
-                        if let url = entry.drawingURL { DrawingPreview(url: url, album: album) }
-                        if let url = entry.audioURL { Text(url.absoluteString) }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(game.playersByID[entry.authorID]?.nickname ?? "Jugador")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(Theme.ink.opacity(0.55))
+                            if let text = entry.text {
+                                Text(text).font(.system(size: 19, weight: .bold, design: .rounded))
+                            }
+                            if let url = entry.drawingURL { DrawingPreview(url: url, album: album) }
+                            if entry.audioURL != nil {
+                                Label("Reacción grabada", systemImage: "waveform")
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            }
+                        }
+                        .padding(11)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 17))
                     }
                 }.card()
             }
