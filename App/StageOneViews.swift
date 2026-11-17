@@ -198,7 +198,15 @@ public struct StageOneRootView: View {
 
     private func restoreProfile() {
         let saved = GameProfile.load()
-        if !saved.userID.isEmpty { profile = saved; auth.restoreLocalGuest(Player(id: saved.userID, nickname: saved.nickname)) }
+        if !saved.userID.isEmpty {
+            profile = saved
+            auth.restoreLocalGuest(Player(id: saved.userID, nickname: saved.nickname))
+        } else {
+            Task {
+                await auth.restoreSession()
+                syncProfile()
+            }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { withAnimation { booted = true } }
     }
     private func makeGuest() {

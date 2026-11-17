@@ -10,6 +10,22 @@ import Foundation
 
     public init(service: any AuthServicing) { self.service = service }
 
+    public func restoreSession() async {
+        guard player == nil, state != .loading,
+              let service = service as? any SessionRestoringAuthServicing else { return }
+        state = .loading
+        errorMessage = nil
+        do {
+            if let restored = try await service.restoreSession() {
+                player = restored
+                nickname = restored.nickname
+                state = .lobby
+            } else {
+                state = .idle
+            }
+        } catch { fail(error.localizedDescription) }
+    }
+
     public func signIn() async {
         guard state != .loading else { return }
         let name = nickname.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -20,6 +20,9 @@ public enum ServiceError: LocalizedError {
     func signInAnonymously() async throws -> Player
     func signOut() throws
 }
+@MainActor public protocol SessionRestoringAuthServicing: AuthServicing {
+    func restoreSession() async throws -> Player?
+}
 @MainActor public protocol EmailAuthServicing: AuthServicing {
     func signIn(email: String, password: String) async throws -> Player
     func createAccount(email: String, password: String, nickname: String) async throws -> Player

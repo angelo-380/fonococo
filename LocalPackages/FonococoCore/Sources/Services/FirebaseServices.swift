@@ -4,7 +4,7 @@ import FirebaseAuth
 import FirebaseDatabase
 import UIKit
 
-@MainActor public final class FirebaseAuthService: EmailAuthServicing {
+@MainActor public final class FirebaseAuthService: EmailAuthServicing, SessionRestoringAuthServicing {
     private let auth: Auth
     public init(auth: Auth) { self.auth = auth }
     public func signInAnonymously() async throws -> Player {
@@ -13,6 +13,11 @@ import UIKit
         return Player(id: result.user.uid, nickname: result.user.displayName ?? "")
     }
     public func signOut() throws { try auth.signOut() }
+    public func restoreSession() async throws -> Player? {
+        guard let user = auth.currentUser else { return nil }
+        let nickname = user.displayName ?? user.email?.components(separatedBy: "@").first ?? "Jugador"
+        return Player(id: user.uid, nickname: nickname)
+    }
     public func signIn(email: String, password: String) async throws -> Player {
         let result = try await auth.signIn(withEmail: email, password: password)
         return Player(id: result.user.uid, nickname: result.user.displayName ?? email.components(separatedBy: "@").first ?? "Jugador")
