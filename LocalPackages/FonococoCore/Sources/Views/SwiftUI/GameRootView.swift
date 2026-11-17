@@ -67,6 +67,13 @@ public struct GameRootView: View {
                             .font(.system(size: 12, weight: .semibold, design: .rounded)).foregroundStyle(Theme.ink.opacity(0.56))
                     }
                     Spacer(minLength: 8)
+                    Button { album.cancelRecording(); game.leave() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .frame(width: 34, height: 34)
+                            .background(.white.opacity(0.8), in: Circle())
+                    }
+                    .accessibilityLabel("Salir de partida")
                     Button { album.cancelRecording(); game.leave(); auth.signOut() } label: {
                         Label("Cerrar sesión", systemImage: "rectangle.portrait.and.arrow.right")
                             .font(.system(size: 12, weight: .bold, design: .rounded))
