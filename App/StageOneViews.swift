@@ -18,14 +18,15 @@ private struct GameProfile: Codable, Equatable {
     var username = ""
     var nickname = ""
     var avatar = "🐼"
+    var avatarImageData: String?
     var xp = 0
     var gamesPlayed = 0
     var gamesWon = 0
     var drawings = 0
     var guesses = 0
     var isGuest = true
-    var level: Int { max(1, xp / 100 + 1) }
-    var levelXP: Int { xp % 100 }
+    var level: Int { StageOneRules.level(for: xp) }
+    var levelXP: Int { StageOneRules.xpWithinLevel(for: xp) }
     static func load() -> GameProfile {
         guard let data = UserDefaults.standard.data(forKey: "fonococo.profile.v1"), let value = try? JSONDecoder().decode(GameProfile.self, from: data) else { return GameProfile() }
         return value
@@ -33,12 +34,7 @@ private struct GameProfile: Codable, Equatable {
     func save() { if let data = try? JSONEncoder().encode(self) { UserDefaults.standard.set(data, forKey: "fonococo.profile.v1") } }
 }
 
-private struct DemoFriend: Identifiable, Codable, Equatable {
-    var id: String { username }
-    var username: String
-    var nickname: String
-    var avatar: String
-}
+private typealias DemoFriend = StageOneFriend
 
 private enum MainTab: String, CaseIterable { case home = "Inicio", friends = "Amigos", profile = "Perfil" }
 private enum AppSheet: String, Identifiable { case createRoom, waitingRoom, matchmaking, editProfile, addFriend, signup, login; var id: String { rawValue } }
@@ -53,7 +49,10 @@ public struct StageOneRootView: View {
     @State private var selectedTab: MainTab = .home
     @State private var sheet: AppSheet?
     @State private var showJoin = false
+    @State private var providerMessage = ""
+    @State private var showProviderMessage = false
     @State private var roomCode = ""
+    @State private var createdRoomName = ""
     @State private var booted = false
     @State private var friends = [DemoFriend(username: "NubeDibuja", nickname: "Nube", avatar: "🦊"), DemoFriend(username: "PixelLima", nickname: "Mati", avatar: "🐸")]
     @State private var incoming = [DemoFriend(username: "TintaLunar", nickname: "Luna", avatar: "🐱")]
@@ -91,6 +90,7 @@ public struct StageOneRootView: View {
             Button("Cancelar", role: .cancel) { }
             Button("Buscar") { joinRoom() }
         } message: { Text(firebaseConfigured ? "Ingresa un código de sala activo." : "Las salas locales solo funcionan en este dispositivo.") }
+        .alert("Proveedor no configurado", isPresented: $showProviderMessage) { Button("Entendido", role: .cancel) { } } message: { Text(providerMessage) }
         .onAppear(perform: restoreProfile)
         .onChange(of: profile) { _, value in
             value.save()
@@ -126,7 +126,7 @@ public struct StageOneRootView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Button { selectedTab = .profile } label: { AvatarBadge(emoji: profile.avatar, size: 52) }.buttonStyle(.plain).accessibilityLabel("Abrir perfil")
+            Button { selectedTab = .profile } label: { AvatarBadge(emoji: profile.avatar, size: 52, imageData: profile.avatarImageData) }.buttonStyle(.plain).accessibilityLabel("Abrir perfil")
             VStack(alignment: .leading, spacing: 3) { Text(profile.nickname.isEmpty ? "¡Hola!" : profile.nickname).font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(Aero.ink); HStack(spacing: 5) { Text("NIVEL \(profile.level)").font(.system(size: 10, weight: .heavy, design: .rounded)); MiniXPBar(value: Double(profile.levelXP) / 100).frame(width: 70, height: 6); Text("\(profile.levelXP)/100").font(.system(size: 10, weight: .bold, design: .rounded)) }.foregroundStyle(Aero.ink.opacity(0.6)) }
             Spacer()
             Text("✦").font(.system(size: 17, weight: .black)).foregroundStyle(Aero.violet).frame(width: 36, height: 36).background(.white.opacity(0.7), in: Circle())
@@ -146,7 +146,7 @@ public struct StageOneRootView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 16) {
                 HStack { Text("Tu perfil").font(.system(size: 30, weight: .heavy, design: .rounded)); Spacer(); Button { sheet = .editProfile } label: { Image(systemName: "pencil").fontWeight(.bold).frame(width: 42, height: 42).background(.white.opacity(0.7), in: Circle()) }.accessibilityLabel("Editar perfil") }
-                VStack(spacing: 8) { AvatarBadge(emoji: profile.avatar, size: 104); Text(profile.nickname).font(.system(size: 23, weight: .heavy, design: .rounded)); Text("@\(profile.username)").font(.system(size: 14, weight: .semibold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.54)); HStack { Text("NIVEL \(profile.level)").font(.system(size: 12, weight: .heavy, design: .rounded)); Spacer(); Text("\(profile.levelXP) / 100 XP").font(.system(size: 12, weight: .bold, design: .rounded)) }.padding(.top, 8); MiniXPBar(value: Double(profile.levelXP) / 100).frame(height: 10) }.padding(20).frame(maxWidth: .infinity).glass()
+                VStack(spacing: 8) { AvatarBadge(emoji: profile.avatar, size: 104, imageData: profile.avatarImageData); Text(profile.nickname).font(.system(size: 23, weight: .heavy, design: .rounded)); Text("@\(profile.username)").font(.system(size: 14, weight: .semibold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.54)); HStack { Text("NIVEL \(profile.level)").font(.system(size: 12, weight: .heavy, design: .rounded)); Spacer(); Text("\(profile.levelXP) / 100 XP").font(.system(size: 12, weight: .bold, design: .rounded)) }.padding(.top, 8); MiniXPBar(value: Double(profile.levelXP) / 100).frame(height: 10) }.padding(20).frame(maxWidth: .infinity).glass()
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) { StatTile(value: "\(profile.gamesPlayed)", label: "Partidas", icon: "gamecontroller.fill", color: Aero.sky); StatTile(value: "\(profile.gamesWon)", label: "Ganadas", icon: "trophy.fill", color: Aero.yellow); StatTile(value: "\(profile.drawings)", label: "Dibujos", icon: "paintbrush.fill", color: Aero.coral); StatTile(value: "\(profile.guesses)", label: "Aciertos", icon: "lightbulb.fill", color: Aero.violet) }
                 if profile.isGuest { VStack(alignment: .leading, spacing: 10) { Label("Guarda tu progreso", systemImage: "sparkles").font(.system(size: 16, weight: .heavy, design: .rounded)); Text("Vincula tu perfil cuando esté lista la configuración de cuenta.").font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.6)); HStack { providerButton("Google", icon: "g.circle.fill"); providerButton("Facebook", icon: "f.circle.fill"); providerButton("Apple", icon: "apple.logo") }; Button("Crear cuenta") { sheet = .signup }.font(.system(size: 14, weight: .bold, design: .rounded)).frame(maxWidth: .infinity).padding(12).foregroundStyle(.white).background(Aero.violet, in: Capsule()) }.padding(16).glass() }
                 Button(role: .destructive) { album.cancelRecording(); game.leave(); auth.signOut() } label: { Label("Cerrar sesión", systemImage: "rectangle.portrait.and.arrow.right").font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.7)).frame(maxWidth: .infinity).padding(14).background(.white.opacity(0.62), in: Capsule()) }
@@ -163,8 +163,8 @@ public struct StageOneRootView: View {
 
     @ViewBuilder private func sheetContent(_ route: AppSheet) -> some View {
         switch route {
-        case .createRoom: CreateRoomSheet(game: game, player: auth.player, configured: firebaseConfigured, onCreated: { sheet = .waitingRoom })
-        case .waitingRoom: WaitingRoomSheet(game: game, profile: profile, configured: firebaseConfigured, onExit: { game.leave(); sheet = nil })
+        case .createRoom: CreateRoomSheet(game: game, player: auth.player, configured: firebaseConfigured, onCreated: { createdRoomName = $0; sheet = .waitingRoom })
+        case .waitingRoom: WaitingRoomSheet(game: game, profile: profile, configured: firebaseConfigured, roomName: createdRoomName, onExit: { game.leave(); sheet = nil })
         case .matchmaking: MatchmakingSheet(profile: profile, configured: firebaseConfigured)
         case .editProfile: EditProfileSheet(profile: $profile)
         case .addFriend: AddFriendSheet(profile: profile, friends: $friends, outgoing: $outgoingFriends)
@@ -179,8 +179,7 @@ public struct StageOneRootView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { withAnimation { booted = true } }
     }
     private func makeGuest() {
-        let prefixes = ["PandaPixel", "BurbujaMax", "NinjaDoodle", "AeroPanda", "PincelVeloz"]
-        let name = "\(prefixes.randomElement() ?? "PandaPixel")\(Int.random(in: 10...99))"
+        let name = StageOneRules.guestName(randomIndex: Int.random(in: 0...4), number: Int.random(in: 10...99))
         if firebaseConfigured {
             auth.nickname = name
             Task {
@@ -206,7 +205,7 @@ public struct StageOneRootView: View {
         game.roomID = code
         if let player = auth.player { game.connect(player: player); sheet = .waitingRoom }
     }
-    private func providerButton(_ title: String, icon: String) -> some View { Button { } label: { Label(title, systemImage: icon).font(.system(size: 11, weight: .bold, design: .rounded)).frame(maxWidth: .infinity).padding(9).background(.white.opacity(0.75), in: Capsule()) }.disabled(true).opacity(0.55).accessibilityHint("Proveedor pendiente de configuración") }
+    private func providerButton(_ title: String, icon: String) -> some View { Button { providerMessage = "\(title) necesita configurar su proveedor en Firebase."; showProviderMessage = true } label: { Label(title, systemImage: icon).font(.system(size: 11, weight: .bold, design: .rounded)).frame(maxWidth: .infinity).padding(9).background(.white.opacity(0.75), in: Capsule()) }.accessibilityHint("Muestra el estado de configuración del proveedor") }
 }
 
 private struct SplashView: View {
@@ -222,34 +221,37 @@ private struct WelcomeView: View {
     let onGuest: () -> Void
     let onSignup: () -> Void
     let onLogin: () -> Void
-    var body: some View { VStack(spacing: 16) { Spacer(minLength: 18); Text("🫧").font(.system(size: 84)); Text("Dibuja. Adivina.\nRíete en grupo.").multilineTextAlignment(.center).font(.system(size: 32, weight: .black, design: .rounded)).foregroundStyle(Aero.ink); Text("La creatividad se pega.").font(.system(size: 15, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.55)); Spacer(); Button(action: onGuest) { Label("Jugar como invitado", systemImage: "sparkles").font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(17).background(LinearGradient(colors: [Aero.sky, Aero.aqua], startPoint: .leading, endPoint: .trailing), in: Capsule()).shadow(color: Aero.sky.opacity(0.35), radius: 13, y: 6) }; Button(action: onSignup) { Text("Crear cuenta").font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(Aero.violet).padding(7) }; Button(action: onLogin) { Text("Ya tengo cuenta · Iniciar sesión").font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.6)) }; HStack { provider("Google", symbol: "g.circle.fill"); provider("Facebook", symbol: "f.circle.fill"); provider("Apple", symbol: "apple.logo") }; if !configured { Text("Modo local · Firebase no configurado").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.48)) }; if let message = auth.errorMessage { Text(message).font(.caption).foregroundStyle(.red) }; Spacer(minLength: 18) }.padding(.horizontal, 28).padding(.vertical, 22) }
-    private func provider(_ title: String, symbol: String) -> some View { Button { } label: { Label(title, systemImage: symbol).font(.system(size: 12, weight: .bold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.55)).frame(maxWidth: .infinity).padding(12).background(.white.opacity(0.72), in: Capsule()) }.disabled(true).accessibilityHint("Proveedor aún no configurado") }
+    @State private var providerMessage = ""
+    @State private var showProviderMessage = false
+    var body: some View { VStack(spacing: 16) { Spacer(minLength: 18); Text("🫧").font(.system(size: 84)); Text("Dibuja. Adivina.\nRíete en grupo.").multilineTextAlignment(.center).font(.system(size: 32, weight: .black, design: .rounded)).foregroundStyle(Aero.ink); Text("La creatividad se pega.").font(.system(size: 15, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.55)); Spacer(); Button(action: onGuest) { Label("Jugar como invitado", systemImage: "sparkles").font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(17).background(LinearGradient(colors: [Aero.sky, Aero.aqua], startPoint: .leading, endPoint: .trailing), in: Capsule()).shadow(color: Aero.sky.opacity(0.35), radius: 13, y: 6) }; Button(action: onSignup) { Text("Crear cuenta").font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(Aero.violet).padding(7) }; Button(action: onLogin) { Text("Ya tengo cuenta · Iniciar sesión").font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.6)) }; HStack { provider("Google", symbol: "g.circle.fill"); provider("Facebook", symbol: "f.circle.fill"); provider("Apple", symbol: "apple.logo") }; if !configured { Text("Modo local · Firebase no configurado").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.48)) }; if let message = auth.errorMessage { Text(message).font(.caption).foregroundStyle(.red) }; Spacer(minLength: 18) }.padding(.horizontal, 28).padding(.vertical, 22).alert("Proveedor no configurado", isPresented: $showProviderMessage) { Button("Entendido", role: .cancel) { } } message: { Text(providerMessage) } }
+    private func provider(_ title: String, symbol: String) -> some View { Button { providerMessage = "\(title) requiere configuración de OAuth en Firebase."; showProviderMessage = true } label: { Label(title, systemImage: symbol).font(.system(size: 12, weight: .bold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.55)).frame(maxWidth: .infinity).padding(12).background(.white.opacity(0.72), in: Capsule()) }.accessibilityHint("Muestra el estado de configuración del proveedor") }
 }
 
 private struct CreateRoomSheet: View {
     @ObservedObject var game: GameViewModel
     let player: Player?
     let configured: Bool
-    let onCreated: () -> Void
+    let onCreated: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var roomName = ""
     @State private var capacity = 4
-    private let options = Array(2...8)
-    var body: some View { VStack(spacing: 18) { HStack { Text("Sala privada").font(.system(size: 25, weight: .black, design: .rounded)); Spacer(); Button { dismiss() } label: { Image(systemName: "xmark").fontWeight(.bold).padding(10).background(.white, in: Circle()) } }.foregroundStyle(Aero.ink); TextField("Nombre de sala (opcional)", text: $roomName).padding(14).background(.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 16)); Text("¿Cuántos juegan?").font(.system(size: 15, weight: .bold, design: .rounded)).frame(maxWidth: .infinity, alignment: .leading); HStack(spacing: 8) { ForEach(options, id: \.self) { n in Button { withAnimation(.spring(response: 0.25)) { capacity = n } } label: { Text("\(n)").font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(capacity == n ? .white : Aero.ink).frame(maxWidth: .infinity).padding(.vertical, 14).background(capacity == n ? Aero.violet : .white.opacity(0.76), in: RoundedRectangle(cornerRadius: 14)) } } }; Button { Task { guard let player else { return }; await game.create(player: Player(id: player.id, nickname: roomName.isEmpty ? player.nickname : player.nickname), playerLimit: capacity); if game.errorMessage == nil { onCreated() } } } label: { Label("Crear sala", systemImage: "sparkles").font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(16).background(LinearGradient(colors: [Aero.sky, Aero.aqua], startPoint: .leading, endPoint: .trailing), in: Capsule()) }.disabled(game.state == .loading); if !configured { Text("Sala local de demostración · Este código no conecta otros dispositivos").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.55)).multilineTextAlignment(.center) }; if let error = game.errorMessage { Text(error).font(.caption).foregroundStyle(.red) }; Spacer(minLength: 0) }.padding(22).background(Aero.backdrop) }
+    private let options = StageOneRules.playerLimits
+    var body: some View { VStack(spacing: 18) { HStack { Text("Sala privada").font(.system(size: 25, weight: .black, design: .rounded)); Spacer(); Button { dismiss() } label: { Image(systemName: "xmark").fontWeight(.bold).padding(10).background(.white, in: Circle()) } }.foregroundStyle(Aero.ink); TextField("Nombre de sala (opcional)", text: $roomName).padding(14).background(.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 16)); Text("¿Cuántos juegan?").font(.system(size: 15, weight: .bold, design: .rounded)).frame(maxWidth: .infinity, alignment: .leading); HStack(spacing: 8) { ForEach(options, id: \.self) { n in Button { withAnimation(.spring(response: 0.25)) { capacity = n } } label: { Text("\(n)").font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(capacity == n ? .white : Aero.ink).frame(maxWidth: .infinity).padding(.vertical, 14).background(capacity == n ? Aero.violet : .white.opacity(0.76), in: RoundedRectangle(cornerRadius: 14)) } } }; Button { Task { guard let player else { return }; await game.create(player: player, playerLimit: capacity); if game.errorMessage == nil { onCreated(roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Sala de \(player.nickname)" : roomName.trimmingCharacters(in: .whitespacesAndNewlines)) } } } label: { Label("Crear sala", systemImage: "sparkles").font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(16).background(LinearGradient(colors: [Aero.sky, Aero.aqua], startPoint: .leading, endPoint: .trailing), in: Capsule()) }.disabled(game.state == .loading); if !configured { Text("Sala local de demostración · Este código no conecta otros dispositivos").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.55)).multilineTextAlignment(.center) }; if let error = game.errorMessage { Text(error).font(.caption).foregroundStyle(.red) }; Spacer(minLength: 0) }.padding(22).background(Aero.backdrop) }
 }
 
 private struct WaitingRoomSheet: View {
     @ObservedObject var game: GameViewModel
     let profile: GameProfile
     let configured: Bool
+    let roomName: String
     let onExit: () -> Void
     @State private var capacity: Int = 4
     @State private var copied = false
-    init(game: GameViewModel, profile: GameProfile, configured: Bool, onExit: @escaping () -> Void) {
-        self.game = game; self.profile = profile; self.configured = configured; self.onExit = onExit
+    init(game: GameViewModel, profile: GameProfile, configured: Bool, roomName: String, onExit: @escaping () -> Void) {
+        self.game = game; self.profile = profile; self.configured = configured; self.roomName = roomName; self.onExit = onExit
         _capacity = State(initialValue: game.room?.settings?.playerLimit ?? 4)
     }
-    var body: some View { VStack(spacing: 17) { HStack { Button(action: onExit) { Image(systemName: "xmark").fontWeight(.bold).padding(10).background(.white.opacity(0.78), in: Circle()) }; Spacer(); Text("SALA DE ESPERA").font(.system(size: 12, weight: .heavy, design: .rounded)).tracking(1.2); Spacer(); Image(systemName: "ellipsis").padding(10).background(.white.opacity(0.7), in: Circle()) }.foregroundStyle(Aero.ink); VStack(spacing: 7) { Text("Tu código").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.56)); Text(game.roomID).font(.system(size: 34, weight: .black, design: .monospaced)).tracking(4).foregroundStyle(Aero.ink); HStack { Button { UIPasteboard.general.string = game.roomID; copied = true } label: { Label(copied ? "Copiado" : "Copiar", systemImage: copied ? "checkmark" : "doc.on.doc") }.buttonStyle(.borderedProminent).tint(Aero.violet); ShareLink(item: "¡Juega Fonococo conmigo! Código: \(game.roomID)") { Label("Compartir", systemImage: "square.and.arrow.up") }.buttonStyle(.bordered) } }.frame(maxWidth: .infinity).padding(20).glass(); HStack { Text("Jugadores").font(.system(size: 18, weight: .heavy, design: .rounded)); Spacer(); Text("\(game.room?.players.count ?? 1)/\(game.room?.settings?.playerLimit ?? capacity)").font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(Aero.violet) }; VStack(spacing: 10) { ForEach(game.room?.players ?? []) { p in HStack { AvatarBadge(emoji: p.id == profile.userID ? profile.avatar : "🫧", size: 42); VStack(alignment: .leading) { Text(p.nickname).font(.system(size: 15, weight: .bold, design: .rounded)); Text(p.id == game.room?.players.first?.id ? "Anfitrión" : "Jugador").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.55)) }; Spacer(); if p.id == game.room?.players.first?.id { Image(systemName: "crown.fill").foregroundStyle(Aero.yellow) } }.padding(10).background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 17)) } }; if game.isHost { HStack { Text("Máximo de jugadores").font(.system(size: 13, weight: .bold, design: .rounded)); Spacer(); Picker("Capacidad", selection: Binding(get: { capacity }, set: { value in capacity = value; Task { await game.updatePlayerLimit(value) } })) { ForEach(max(2, game.room?.players.count ?? 1)...8, id: \.self) { Text("\($0)").tag($0) } }.pickerStyle(.menu) }.padding(.horizontal, 4) }; Spacer(); Button { Task { await game.start() } } label: { Label("Iniciar partida", systemImage: "play.fill").font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(16).background(Aero.violet, in: Capsule()) }.disabled(!game.isHost || (game.room?.players.count ?? 0) < 2); if !configured { Text("Modo demostración local · Solo anfitrión").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.5)) }; if let error = game.errorMessage { Text(error).font(.caption).foregroundStyle(.red) } }.padding(20).background(Aero.backdrop) }
+    var body: some View { VStack(spacing: 17) { HStack { Button(action: onExit) { Image(systemName: "xmark").fontWeight(.bold).padding(10).background(.white.opacity(0.78), in: Circle()) }; Spacer(); Text(roomName.uppercased()).font(.system(size: 12, weight: .heavy, design: .rounded)).tracking(1.2); Spacer(); Image(systemName: "ellipsis").padding(10).background(.white.opacity(0.7), in: Circle()) }.foregroundStyle(Aero.ink); VStack(spacing: 7) { Text("Tu código").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.56)); Text(game.roomID).font(.system(size: 34, weight: .black, design: .monospaced)).tracking(4).foregroundStyle(Aero.ink); HStack { Button { UIPasteboard.general.string = game.roomID; copied = true } label: { Label(copied ? "Copiado" : "Copiar", systemImage: copied ? "checkmark" : "doc.on.doc") }.buttonStyle(.borderedProminent).tint(Aero.violet); ShareLink(item: "¡Juega Fonococo conmigo! Código: \(game.roomID)") { Label("Compartir", systemImage: "square.and.arrow.up") }.buttonStyle(.bordered) } }.frame(maxWidth: .infinity).padding(20).glass(); HStack { Text("Jugadores").font(.system(size: 18, weight: .heavy, design: .rounded)); Spacer(); Text("\(game.room?.players.count ?? 1)/\(game.room?.settings?.playerLimit ?? capacity)").font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(Aero.violet) }; VStack(spacing: 10) { ForEach(game.room?.players ?? []) { p in HStack { AvatarBadge(emoji: p.id == profile.userID ? profile.avatar : "🫧", size: 42, imageData: p.id == profile.userID ? profile.avatarImageData : nil); VStack(alignment: .leading) { Text(p.nickname).font(.system(size: 15, weight: .bold, design: .rounded)); Text(p.id == game.room?.players.first?.id ? "Anfitrión" : "Jugador").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.55)) }; Spacer(); if p.id == game.room?.players.first?.id { Image(systemName: "crown.fill").foregroundStyle(Aero.yellow) } }.padding(10).background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 17)) } }; if game.isHost { HStack { Text("Máximo de jugadores").font(.system(size: 13, weight: .bold, design: .rounded)); Spacer(); Picker("Capacidad", selection: Binding(get: { capacity }, set: { value in capacity = value; Task { await game.updatePlayerLimit(value) } })) { ForEach(max(2, game.room?.players.count ?? 1)...8, id: \.self) { Text("\($0)").tag($0) } }.pickerStyle(.menu) }.padding(.horizontal, 4) }; Spacer(); Button { Task { await game.start() } } label: { Label("Iniciar partida", systemImage: "play.fill").font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(16).background(Aero.violet, in: Capsule()) }.disabled(!game.isHost || (game.room?.players.count ?? 0) < 2); if !configured { Text("Modo demostración local · Solo anfitrión").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.5)) }; if let error = game.errorMessage { Text(error).font(.caption).foregroundStyle(.red) } }.padding(20).background(Aero.backdrop) }
 }
 
 private struct MatchmakingSheet: View {
@@ -272,8 +274,8 @@ private struct EditProfileSheet: View {
     @State private var error: String?
     private let avatars = ["🐼", "🦊", "🐸", "🐱", "🐻", "🐯", "🐰", "🐙"]
     init(profile: Binding<GameProfile>) { _profile = profile; _username = State(initialValue: profile.wrappedValue.username); _nickname = State(initialValue: profile.wrappedValue.nickname) }
-    var body: some View { VStack(spacing: 15) { Text("Editar perfil").font(.system(size: 24, weight: .black, design: .rounded)).foregroundStyle(Aero.ink); PhotosPicker(selection: $photo, matching: .images) { AvatarBadge(emoji: profile.avatar, size: 76).overlay(alignment: .bottomTrailing) { Image(systemName: "camera.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.white).padding(7).background(Aero.violet, in: Circle()) } }; HStack { ForEach(avatars, id: \.self) { avatar in Button { profile.avatar = avatar } label: { Text(avatar).font(.system(size: 26)).padding(6).background(profile.avatar == avatar ? Aero.sky.opacity(0.3) : .clear, in: Circle()) } } }; TextField("Nombre de usuario", text: $username).textInputAutocapitalization(.never).autocorrectionDisabled().padding(13).background(.white, in: RoundedRectangle(cornerRadius: 14)); TextField("Apodo", text: $nickname).padding(13).background(.white, in: RoundedRectangle(cornerRadius: 14)); if let error { Text(error).font(.caption).foregroundStyle(.red) }; Button("Guardar cambios") { save() }.font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(14).background(Aero.violet, in: Capsule()); Text("El nombre se valida localmente; la disponibilidad global requiere backend.").font(.system(size: 10, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.5)).multilineTextAlignment(.center) }.padding(22).background(Aero.backdrop).onChange(of: photo) { _, item in Task { if let data = try? await item?.loadTransferable(type: Data.self), let image = UIImage(data: data) { profile.avatar = "🖼️"; if let compressed = image.jpegData(compressionQuality: 0.75) { UserDefaults.standard.set(compressed, forKey: "fonococo.avatar.image") } } } } }
-    private func save() { let user = username.trimmingCharacters(in: .whitespacesAndNewlines); let nick = nickname.trimmingCharacters(in: .whitespacesAndNewlines); let valid = user.range(of: "^[A-Za-z0-9_]{3,18}$", options: .regularExpression) != nil; guard valid, !nick.isEmpty, nick.count <= 24 else { error = "Usa 3–18 caracteres en el usuario y un apodo de hasta 24."; return }; guard user.lowercased() == profile.username.lowercased() || !["PandaPixel", "NubeDibuja", "PixelLima", "TintaLunar"].contains(where: { $0.lowercased() == user.lowercased() }) else { error = "Ese nombre ya aparece en los datos locales de demostración."; return }; profile.username = user; profile.nickname = nick; dismiss() }
+    var body: some View { VStack(spacing: 15) { Text("Editar perfil").font(.system(size: 24, weight: .black, design: .rounded)).foregroundStyle(Aero.ink); PhotosPicker(selection: $photo, matching: .images) { AvatarBadge(emoji: profile.avatar, size: 76, imageData: profile.avatarImageData).overlay(alignment: .bottomTrailing) { Image(systemName: "camera.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.white).padding(7).background(Aero.violet, in: Circle()) } }; HStack { ForEach(avatars, id: \.self) { avatar in Button { profile.avatar = avatar; profile.avatarImageData = nil } label: { Text(avatar).font(.system(size: 26)).padding(6).background(profile.avatar == avatar ? Aero.sky.opacity(0.3) : .clear, in: Circle()) } } }; TextField("Nombre de usuario", text: $username).textInputAutocapitalization(.never).autocorrectionDisabled().padding(13).background(.white, in: RoundedRectangle(cornerRadius: 14)); TextField("Apodo", text: $nickname).padding(13).background(.white, in: RoundedRectangle(cornerRadius: 14)); if let error { Text(error).font(.caption).foregroundStyle(.red) }; Button("Guardar cambios") { save() }.font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(14).background(Aero.violet, in: Capsule()); Text("El nombre se valida localmente; la disponibilidad global requiere backend.").font(.system(size: 10, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.5)).multilineTextAlignment(.center) }.padding(22).background(Aero.backdrop).onChange(of: photo) { _, item in Task { if let data = try? await item?.loadTransferable(type: Data.self), let image = UIImage(data: data), let compressed = image.jpegData(compressionQuality: 0.7) { profile.avatar = "📷"; profile.avatarImageData = compressed.base64EncodedString() } } } }
+    private func save() { let user = username.trimmingCharacters(in: .whitespacesAndNewlines); let nick = nickname.trimmingCharacters(in: .whitespacesAndNewlines); let valid = StageOneRules.usernameIsValid(user); guard valid, !nick.isEmpty, nick.count <= 24 else { error = "Usa 3–18 caracteres en el usuario y un apodo de hasta 24."; return }; guard user.caseInsensitiveCompare(profile.username) == .orderedSame || StageOneRules.usernameIsLocallyAvailable(user, existing: ["PandaPixel", "NubeDibuja", "PixelLima", "TintaLunar"]) else { error = "Ese nombre ya aparece en los datos locales de demostración."; return }; profile.username = user; profile.nickname = nick; dismiss() }
 }
 
 private struct FriendsList: View {
@@ -281,7 +283,7 @@ private struct FriendsList: View {
     @Binding var incoming: [DemoFriend]
     @Binding var outgoing: [DemoFriend]
     @State private var query = ""
-    var filtered: [DemoFriend] { friends.filter { query.isEmpty || $0.username.localizedCaseInsensitiveContains(query) || $0.nickname.localizedCaseInsensitiveContains(query) } }
+    var filtered: [DemoFriend] { StageOneRules.filterFriends(friends, query: query) }
     var body: some View { VStack(spacing: 14) { HStack { Image(systemName: "magnifyingglass").foregroundStyle(Aero.ink.opacity(0.45)); TextField("Buscar amigos", text: $query).font(.system(size: 14, weight: .medium, design: .rounded)) }.padding(13).background(.white.opacity(0.78), in: Capsule()); VStack(spacing: 9) { ForEach(filtered) { friend in friendRow(friend) }; if filtered.isEmpty { Text("No hay coincidencias").font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.5)).padding() } }.padding(12).glass(); if !outgoing.isEmpty { VStack(alignment: .leading, spacing: 10) { Text("Solicitudes pendientes · demo").font(.system(size: 14, weight: .heavy, design: .rounded)); ForEach(outgoing) { friend in HStack { Text(friend.avatar); Text("@\(friend.username)").font(.system(size: 13, weight: .semibold, design: .rounded)); Spacer(); Text("Pendiente").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(Aero.violet) }.padding(10) } }.padding(13).glass() }; VStack(alignment: .leading, spacing: 10) { Text("Solicitudes recibidas · demo").font(.system(size: 14, weight: .heavy, design: .rounded)); ForEach(incoming) { friend in HStack { Text(friend.avatar).font(.system(size: 27)); VStack(alignment: .leading) { Text(friend.nickname).font(.system(size: 14, weight: .bold, design: .rounded)); Text("@\(friend.username)").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.5)) }; Spacer(); Button { friends.append(friend); incoming.removeAll { $0.id == friend.id } } label: { Image(systemName: "checkmark").foregroundStyle(.white).padding(9).background(Aero.aqua, in: Circle()) }; Button { incoming.removeAll { $0.id == friend.id } } label: { Image(systemName: "xmark").foregroundStyle(Aero.ink.opacity(0.5)).padding(8).background(.white, in: Circle()) } } }.padding(13).glass() } }.foregroundStyle(Aero.ink) }
     private func friendRow(_ friend: DemoFriend) -> some View { HStack(spacing: 12) { AvatarBadge(emoji: friend.avatar, size: 46); VStack(alignment: .leading, spacing: 2) { Text(friend.nickname).font(.system(size: 15, weight: .bold, design: .rounded)); Text("@\(friend.username)").font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.5)) }; Spacer(); Circle().fill(Aero.aqua).frame(width: 9, height: 9) }.padding(9).background(.white.opacity(0.63), in: RoundedRectangle(cornerRadius: 17)) }
 }
@@ -316,7 +318,23 @@ private struct AccountSheet: View {
     private func submit() { guard configured else { message = "Servicio no configurado."; return }; if isSignup { guard username.range(of: "^[A-Za-z0-9_]{3,18}$", options: .regularExpression) != nil, !nickname.trimmingCharacters(in: .whitespaces).isEmpty, password.count >= 8, password == confirmation else { message = "Revisa usuario, apodo y contraseña (mínimo 8 caracteres)."; return }; Task { await auth.createAccount(email: email, password: password, nickname: nickname); if auth.player != nil { onDone() } else { message = auth.errorMessage } } } else { Task { await auth.signIn(email: email, password: password); if auth.player != nil { onDone() } else { message = auth.errorMessage } } } }
 }
 
-private struct AvatarBadge: View { let emoji: String; let size: CGFloat; var body: some View { Text(emoji).font(.system(size: size * 0.55)).frame(width: size, height: size).background(LinearGradient(colors: [.white, Aero.sky.opacity(0.28)], startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle()).overlay(Circle().stroke(.white, lineWidth: 2)).shadow(color: Aero.sky.opacity(0.18), radius: 8, y: 4) } }
+private struct AvatarBadge: View {
+    let emoji: String
+    let size: CGFloat
+    var imageData: String? = nil
+    var body: some View {
+        Group {
+            if let imageData, let data = Data(base64Encoded: imageData), let image = UIImage(data: data) {
+                Image(uiImage: image).resizable().scaledToFill().frame(width: size, height: size).clipped()
+            } else {
+                Text(emoji).font(.system(size: size * 0.55)).frame(width: size, height: size)
+                    .background(LinearGradient(colors: [.white, Aero.sky.opacity(0.28)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+        }
+        .frame(width: size, height: size).clipShape(Circle()).overlay(Circle().stroke(.white, lineWidth: 2))
+        .shadow(color: Aero.sky.opacity(0.18), radius: 8, y: 4)
+    }
+}
 private struct MiniXPBar: View { let value: Double; var body: some View { GeometryReader { proxy in ZStack(alignment: .leading) { Capsule().fill(Aero.ink.opacity(0.1)); Capsule().fill(LinearGradient(colors: [Aero.aqua, Aero.sky], startPoint: .leading, endPoint: .trailing)).frame(width: proxy.size.width * min(1, max(0, value))).animation(.easeOut(duration: 0.5), value: value) } } } }
 private struct StatTile: View { let value: String; let label: String; let icon: String; let color: Color; var body: some View { HStack(spacing: 11) { Image(systemName: icon).font(.system(size: 16, weight: .bold)).foregroundStyle(Aero.ink).frame(width: 38, height: 38).background(color.opacity(0.46), in: Circle()); VStack(alignment: .leading, spacing: 2) { Text(value).font(.system(size: 20, weight: .black, design: .rounded)); Text(label).font(.system(size: 11, weight: .semibold, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.55)) }; Spacer(minLength: 0) }.padding(11).glass() } }
 

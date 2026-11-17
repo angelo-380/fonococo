@@ -60,7 +60,8 @@ import UIKit
         try await mutate(roomID: roomID) { room in
             guard let room else { throw ServiceError.missingRoom }
             if room.players.contains(where: { $0.id == player.id }) { return room }
-            guard room.phase == .lobby, room.players.count < (room.settings?.playerLimit ?? 0) else { throw ServiceError.invalidPayload }
+            guard room.phase == .lobby, let limit = room.settings?.playerLimit,
+                  (2...8).contains(limit), room.players.count < limit else { throw ServiceError.invalidPayload }
             return RoomSnapshot(id: room.id, phase: .lobby, players: room.players + [player], settings: room.settings)
         }
     }
@@ -68,8 +69,8 @@ import UIKit
         guard (2...8).contains(limit) else { throw ServiceError.invalidPayload }
         try await mutate(roomID: roomID) { room in
             guard let room else { throw ServiceError.missingRoom }
-            guard room.players.first?.id == playerID, room.phase == .lobby, limit >= room.players.count,
-                  let settings = room.settings else { throw ServiceError.unauthorized }
+            guard room.players.first?.id == playerID else { throw ServiceError.unauthorized }
+            guard room.phase == .lobby, limit >= room.players.count, let settings = room.settings else { throw ServiceError.invalidPayload }
             let nextSettings = RoomSettings(playerLimit: limit, writingSeconds: settings.writingSeconds, drawingSeconds: settings.drawingSeconds)
             return RoomSnapshot(id: room.id, phase: room.phase, players: room.players, turns: room.turns, chains: room.chains, deadline: room.deadline, settings: nextSettings)
         }
