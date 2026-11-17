@@ -67,6 +67,10 @@ public struct StageOneRootView: View {
             Aero.backdrop.ignoresSafeArea()
             if !booted { SplashView { withAnimation(.spring(response: 0.65)) { booted = true } } }
             else if auth.player == nil { WelcomeView(auth: auth, configured: firebaseConfigured, onGuest: makeGuest, onSignup: { sheet = .signup }, onLogin: { sheet = .login }) }
+            else if game.state == .writing || game.state == .drawing || game.state == .revealing {
+                GameRootView(auth: auth, game: game, canvas: canvas, album: album)
+                    .transition(.opacity)
+            }
             else {
                 NavigationStack {
                     Group {
@@ -97,6 +101,9 @@ public struct StageOneRootView: View {
             if auth.player?.nickname != value.nickname, !value.nickname.isEmpty { auth.updateLocalNickname(value.nickname) }
         }
         .onChange(of: auth.player?.id) { _, id in if id == nil { profile = GameProfile(); UserDefaults.standard.removeObject(forKey: "fonococo.profile.v1") } }
+        .onChange(of: game.state) { _, phase in
+            if phase == .writing || phase == .drawing || phase == .revealing { sheet = nil }
+        }
     }
 
     private var lobby: some View {
