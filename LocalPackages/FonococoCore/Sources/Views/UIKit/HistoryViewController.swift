@@ -6,6 +6,9 @@ public final class HistoryViewController: UITableViewController {
     public var albums: [ArchivedAlbum] = [] { didSet { if isViewLoaded { tableView.reloadData() } } }
     public override func viewDidLoad() {
         super.viewDidLoad()
+        tableView.backgroundColor = .clear
+        tableView.separatorStyle = .none
+        navigationController?.navigationBar.tintColor = UIColor(red: 128/255, green: 87/255, blue: 231/255, alpha: 1)
         historyTable = tableView
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Album")
     }
@@ -15,7 +18,10 @@ public final class HistoryViewController: UITableViewController {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Album", for: indexPath)
         var content = cell.defaultContentConfiguration()
         content.text = albums[indexPath.row].title
+        let rowFont = UIFont.systemFont(ofSize: 17, weight: .bold)
+        content.textProperties.font = UIFont(descriptor: rowFont.fontDescriptor.withDesign(.rounded) ?? rowFont.fontDescriptor, size: 17)
         cell.contentConfiguration = content
+        cell.backgroundColor = UIColor.white.withAlphaComponent(0.68)
         return cell
     }
     public override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
