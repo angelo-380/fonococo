@@ -193,8 +193,8 @@ public struct StageOneRootView: View {
         case .matchmaking: MatchmakingSheet(profile: profile, configured: firebaseConfigured)
         case .editProfile: EditProfileSheet(profile: $profile, existingUsernames: (friends + incoming + outgoingFriends).map(\.username))
         case .addFriend: AddFriendSheet(profile: profile, friends: $friends, incoming: $incoming, outgoing: $outgoingFriends)
-        case .signup: AccountSheet(auth: auth, configured: firebaseConfigured, isSignup: true, onDone: { username in sheet = nil; syncProfile(username: username) })
-        case .login: AccountSheet(auth: auth, configured: firebaseConfigured, isSignup: false, onDone: { _ in sheet = nil; syncProfile() })
+        case .signup: AccountSheet(auth: auth, configured: firebaseConfigured, isSignup: true, existingUsernames: friends.map(\.username) + incoming.map(\.username) + outgoingFriends.map(\.username), onDone: { username in sheet = nil; syncProfile(username: username) })
+        case .login: AccountSheet(auth: auth, configured: firebaseConfigured, isSignup: false, existingUsernames: [], onDone: { _ in sheet = nil; syncProfile() })
         }
     }
 
@@ -350,6 +350,7 @@ private struct AccountSheet: View {
     @ObservedObject var auth: AuthViewModel
     let configured: Bool
     let isSignup: Bool
+    let existingUsernames: [String]
     let onDone: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var username = ""
@@ -360,7 +361,7 @@ private struct AccountSheet: View {
     @State private var message: String?
     var body: some View { VStack(spacing: 13) { Text(isSignup ? "Crear cuenta" : "Iniciar sesión").font(.system(size: 24, weight: .black, design: .rounded)).foregroundStyle(Aero.ink); if isSignup { field("Nombre de usuario", text: $username); field("Apodo", text: $nickname) }; field("Correo electrónico", text: $email).keyboardType(.emailAddress).textInputAutocapitalization(.never); SecureField("Contraseña", text: $password).padding(13).background(.white, in: RoundedRectangle(cornerRadius: 14)); if isSignup { SecureField("Confirmar contraseña", text: $confirmation).padding(13).background(.white, in: RoundedRectangle(cornerRadius: 14)) }; Button(isSignup ? "Crear cuenta" : "Entrar") { submit() }.font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(14).background(Aero.violet, in: Capsule()).disabled(auth.state == .loading); if !configured { Text("Firebase no está configurado. El modo invitado sigue disponible.").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.55)).multilineTextAlignment(.center) }; if let message { Text(message).font(.caption).foregroundStyle(.red) }; Spacer(minLength: 0) }.padding(22).background(Aero.backdrop) }
     private func field(_ title: String, text: Binding<String>) -> some View { TextField(title, text: text).padding(13).background(.white, in: RoundedRectangle(cornerRadius: 14)) }
-    private func submit() { guard configured else { message = "Servicio no configurado."; return }; if isSignup { guard StageOneRules.usernameIsValid(username), !nickname.trimmingCharacters(in: .whitespaces).isEmpty, password.count >= 8, password == confirmation else { message = "Revisa usuario, apodo y contraseña (mínimo 8 caracteres)."; return }; let username = username.trimmingCharacters(in: .whitespacesAndNewlines); Task { await auth.createAccount(email: email, password: password, nickname: nickname); if auth.player != nil { onDone(username) } else { message = auth.errorMessage } } } else { Task { await auth.signIn(email: email, password: password); if auth.player != nil { onDone(nil) } else { message = auth.errorMessage } } } }
+    private func submit() { guard configured else { message = "Servicio no configurado."; return }; if isSignup { guard StageOneRules.usernameIsValid(username), !nickname.trimmingCharacters(in: .whitespaces).isEmpty, password.count >= 8, password == confirmation else { message = "Revisa usuario, apodo y contraseña (mínimo 8 caracteres)."; return }; guard StageOneRules.usernameIsLocallyAvailable(username, existing: existingUsernames + ["PandaPixel", "NubeDibuja", "PixelLima", "TintaLunar", "DoodleLima", "MentaPixel"]) else { message = "Ese nombre aparece en los datos locales de demostración."; return }; let username = username.trimmingCharacters(in: .whitespacesAndNewlines); Task { await auth.createAccount(email: email, password: password, nickname: nickname); if auth.player != nil { onDone(username) } else { message = auth.errorMessage } } } else { Task { await auth.signIn(email: email, password: password); if auth.player != nil { onDone(nil) } else { message = auth.errorMessage } } } }
 }
 
 private struct AvatarBadge: View {
