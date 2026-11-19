@@ -139,14 +139,14 @@ import UIKit
     }
     public func uploadPNG(_ data: Data, roomID: String) async throws -> URL {
         guard data.count <= 20_000_000, let source = UIImage(data: data), source.size.width > 0, source.size.height > 0 else { throw ServiceError.invalidPayload }
-        let ratio = min(1, 1024 / max(source.size.width, source.size.height))
+        let ratio = min(1, 2048 / max(source.size.width, source.size.height))
         let size = CGSize(width: source.size.width * ratio, height: source.size.height * ratio)
         let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
         let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
             UIColor.white.setFill(); context.fill(CGRect(origin: .zero, size: size))
             source.draw(in: CGRect(origin: .zero, size: size))
         }
-        guard let compressed = image.jpegData(compressionQuality: 0.65), compressed.count <= 512_000 else { throw ServiceError.invalidPayload }
+        guard let compressed = image.jpegData(compressionQuality: 0.82), compressed.count <= 2_000_000 else { throw ServiceError.invalidPayload }
         return try await write(compressed, type: "image/jpeg", roomID: roomID)
     }
     public func uploadAudio(fileURL: URL, roomID: String) async throws -> URL {
@@ -171,7 +171,7 @@ import UIKit
         try validateIdentifier(parts[0]); try validateIdentifier(parts[2])
         let snapshot = try await database.reference().child("rooms").child(parts[0]).child("media").child(parts[2]).getData()
         guard let object = snapshot.value as? [String: Any], let encoded = object["base64"] as? String,
-              encoded.count <= 2_700_000, let data = Data(base64Encoded: encoded), !data.isEmpty,
+              encoded.count <= 2_800_000, let data = Data(base64Encoded: encoded), !data.isEmpty,
               data.count == (object["byteCount"] as? NSNumber)?.intValue else { throw ServiceError.invalidPayload }
         return data
     }
