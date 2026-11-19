@@ -2,11 +2,11 @@ import SwiftUI
 import SwiftData
 
 private enum Theme {
-    static let accent = Color(red: 1, green: 0.34, blue: 0.08)
-    static let aqua = Color(red: 1, green: 0.69, blue: 0.22)
-    static let violet = Color(red: 0.95, green: 0.43, blue: 0.18)
-    static let ink = Color(red: 0.20, green: 0.13, blue: 0.10)
-    static let cream = Color(red: 1, green: 0.97, blue: 0.93)
+    static let accent = Color(red: 0.12, green: 0.50, blue: 0.96)
+    static let aqua = Color(red: 0.37, green: 0.83, blue: 0.98)
+    static let violet = Color(red: 0.10, green: 0.38, blue: 0.78)
+    static let ink = Color(red: 0.10, green: 0.17, blue: 0.28)
+    static let cream = Color(red: 0.92, green: 0.97, blue: 1)
 }
 
 private struct GlassCard: ViewModifier {
@@ -48,9 +48,10 @@ public struct GameRootView: View {
     @ObservedObject private var canvas: CanvasViewModel
     @ObservedObject private var album: AlbumViewModel
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \ArchivedAlbum.completedAt, order: .reverse) private var albums: [ArchivedAlbum]
-
-    @State private var showUIKitHistory = false
+    @State private var brushColor: Color = .black
+    @State private var brushSize: Double = 3
+    @State private var showColorDisc = false
+    @State private var recordPulse = false
 
     public init(auth: AuthViewModel, game: GameViewModel, canvas: CanvasViewModel, album: AlbumViewModel) {
         self.auth = auth; self.game = game; self.canvas = canvas; self.album = album
@@ -68,18 +69,12 @@ public struct GameRootView: View {
                     }
                     Spacer(minLength: 8)
                     Button { album.cancelRecording(); game.leave() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .frame(width: 34, height: 34)
-                            .background(.white.opacity(0.8), in: Circle())
-                    }
-                    .accessibilityLabel("Salir de partida")
-                    Button { album.cancelRecording(); game.leave(); auth.signOut() } label: {
-                        Label("Cerrar sesión", systemImage: "rectangle.portrait.and.arrow.right")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .padding(.horizontal, 12).padding(.vertical, 10)
-                            .background(.white.opacity(0.8), in: Capsule())
-                    }.fixedSize().accessibilityLabel("Cerrar sesión")
+                        Label("Salir de sala", systemImage: "rectangle.portrait.and.arrow.right")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .background(Theme.accent, in: Capsule()).foregroundStyle(.white)
+                    }.accessibilityLabel("Salir de partida")
+
                 }.card()
                 gameContent
             } else {
@@ -96,24 +91,6 @@ public struct GameRootView: View {
             if let message = game.errorMessage { Text(message).foregroundStyle(.red).card() }
             if let message = canvas.errorMessage { Text(message).foregroundStyle(.red).card() }
             Text(album.message).font(.subheadline).foregroundStyle(.secondary)
-            Text("Álbumes guardados").font(.system(size: 27, weight: .black, design: .rounded))
-            Button("Alternar historial UIKit") { showUIKitHistory.toggle() }
-                .buttonStyle(OrangeButton())
-            if showUIKitHistory { HistoryControllerView(albums: albums).frame(height: 300).card() }
-            ForEach(albums) { album in
-                VStack {
-                    Text(album.title)
-                    Text(album.completedAt.formatted())
-                    if let payload = try? album.decode(OfflineAlbumPayload.self) {
-                        Text("Archivos disponibles offline: \(payload.media.count)")
-                        ForEach(payload.room.chains) { chain in
-                            ForEach(chain.entries) { entry in
-                                Text(entry.text ?? "Dibujo de \(entry.authorID)")
-                            }
-                        }
-                    }
-                }.card()
-            }
           }
           .frame(maxWidth: 680).padding(.horizontal, 22).padding(.top, 26).padding(.bottom, 45)
           .frame(maxWidth: .infinity)
@@ -127,6 +104,12 @@ public struct GameRootView: View {
         }
         .foregroundStyle(Theme.ink)
         .scrollDismissesKeyboard(.interactively)
+        .sheet(isPresented: $showColorDisc) {
+            ColorDisc(color: $brushColor)
+                .padding(28)
+                .presentationDetents([.height(350)])
+                .presentationDragIndicator(.visible)
+        }
         .onDisappear {
             Task { await canvas.saveDraft() }
             game.leave()
@@ -170,19 +153,40 @@ public struct GameRootView: View {
                 .font(.system(size: 25, weight: .bold, design: .rounded)).card()
             if let turn = game.activeTurn, let room = game.room {
                 CanvasSurface(drawingData: $canvas.drawingData, tool: canvas.tool,
-                              width: canvas.width, undoToken: canvas.undoToken,
+                              width: canvas.width, color: UIColor(brushColor), undoToken: canvas.undoToken, redoToken: canvas.redoToken,
                               onPoints: { canvas.capture(points: $0) }, onError: canvas.report)
                     .frame(height: 320).background(.white, in: RoundedRectangle(cornerRadius: 22))
                     .clipShape(RoundedRectangle(cornerRadius: 22))
                     .task(id: turn.id) { await canvas.open(roomID: room.id, turnID: turn.id) }
                     .disabled(game.timeExpired || game.submitting || canvas.state == .loading || canvas.state == .error)
                 HStack {
-                    Button("Lápiz") { canvas.tool = .pen }
-                    Button("Borrador") { canvas.tool = .eraser }
-                    Button("Deshacer") { canvas.undo() }
+                    Button { canvas.tool = .pencil } label: { Image(systemName: "pencil.tip").frame(minWidth: 44, minHeight: 44) }
+                        .accessibilityLabel("Lápiz")
+                    Button { canvas.tool = .pen } label: { Image(systemName: "pencil").frame(minWidth: 44, minHeight: 44) }
+                        .accessibilityLabel("Bolígrafo")
+                    Button { canvas.tool = .marker } label: { Image(systemName: "highlighter").frame(minWidth: 44, minHeight: 44) }
+                        .accessibilityLabel("Marcador")
+                    Button { canvas.tool = .eraser } label: { Image(systemName: "eraser").frame(minWidth: 44, minHeight: 44) }
+                        .accessibilityLabel("Borrador")
                 }.buttonStyle(.bordered).tint(Theme.violet)
-                Button("Guardar en Fotos") { Task { await canvas.saveToPhotos() } }
-                    .buttonStyle(OrangeButton())
+                HStack {
+                    Button { showColorDisc = true } label: {
+                        Circle().fill(brushColor).frame(width: 30, height: 30)
+                            .overlay(Circle().stroke(.white, lineWidth: 3))
+                            .shadow(color: .black.opacity(0.2), radius: 3)
+                    }.accessibilityLabel("Seleccionar color")
+                    Slider(value: $brushSize, in: 1...40).tint(Theme.accent)
+                    Text("\(Int(brushSize))").font(.caption.monospacedDigit())
+                }.onChange(of: brushSize) { _, value in canvas.width = CGFloat(value) }
+                HStack {
+                    Button { canvas.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                        .accessibilityLabel("Deshacer")
+                    Button { canvas.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                        .accessibilityLabel("Rehacer")
+                }.buttonStyle(.bordered).tint(Theme.violet)
+                Button { Task { await canvas.saveToPhotos() } } label: {
+                    Label(canvas.photoSaved ? "Guardado en Fotos" : "Guardar en Fotos", systemImage: canvas.photoSaved ? "checkmark.circle.fill" : "square.and.arrow.down")
+                }.buttonStyle(OrangeButton())
                 Button("Enviar dibujo") {
                     Task {
                         do { try await game.submitDrawing(png: canvas.pngData()) }
@@ -218,15 +222,24 @@ public struct GameRootView: View {
                 }.card()
             }
             if let room = game.room {
-                Button("Grabar reacción") { Task { await album.startRecording(roomID: room.id) } }
-                    .buttonStyle(OrangeButton())
-                    .disabled(album.recording || album.busy)
-                Button("Terminar y subir reacción") { Task { await album.stopAndUpload() } }
-                    .buttonStyle(OrangeButton())
-                    .disabled(!album.recording || album.busy)
+                if album.recording {
+                    Button { album.stopRecording() } label: {
+                        HStack {
+                            Circle().fill(.red).frame(width: 12, height: 12).opacity(recordPulse ? 1 : 0.25)
+                                .onAppear { withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) { recordPulse = true } }
+                            Text("Detener grabación")
+                        }
+                    }.buttonStyle(OrangeButton(prominent: true))
+                } else if album.reactionReady {
+                    Button("Subir reacción") { Task { await album.stopAndUpload() } }.buttonStyle(OrangeButton(prominent: true))
+                    Button("Eliminar reacción") { album.discardReaction() }.buttonStyle(OrangeButton())
+                } else {
+                    Button("Grabar reacción") { Task { await album.startRecording(roomID: room.id) } }
+                        .buttonStyle(OrangeButton()).disabled(album.busy)
+                }
                 Button("Guardar álbum offline") { Task { await album.archive(room: room, context: modelContext) } }
                     .buttonStyle(OrangeButton(prominent: true))
-                    .disabled(album.busy || album.recording)
+                    .disabled(album.busy || album.recording || album.reactionReady)
             }
         case .error:
             Text("No se pudo sincronizar la partida.").card()
@@ -236,8 +249,7 @@ public struct GameRootView: View {
 
     private var countdown: some View {
         HStack {
-            Text(game.timeExpired ? "Tiempo agotado. Esperando al servidor." : "Segundos: \(game.remainingSeconds)")
-                .font(.headline)
+            if game.timeExpired { Text("Tiempo agotado. Esperando al servidor.").font(.headline) }
             Spacer()
             CountdownView(deadline: game.room?.deadline).frame(width: 64, height: 64)
         }.card()
@@ -250,10 +262,18 @@ private struct DrawingPreview: View {
     let album: AlbumViewModel
     @State private var data: Data?
     @State private var message = "Cargando dibujo…"
+    @State private var saved = false
     var body: some View {
         VStack {
             if let data, let image = UIImage(data: data) {
                 Image(uiImage: image).resizable().scaledToFit()
+                    .onLongPressGesture(minimumDuration: 1.5) {
+                        Task {
+                            do { try await PhotoLibrarySaver().save(image); saved = true }
+                            catch { message = error.localizedDescription }
+                        }
+                    }
+                    .overlay(alignment: .bottom) { if saved { Label("Guardado en Fotos", systemImage: "checkmark.circle.fill").padding(8).background(.regularMaterial, in: Capsule()) } }
             } else { Text(message) }
         }
         .background(.white, in: RoundedRectangle(cornerRadius: 18))
