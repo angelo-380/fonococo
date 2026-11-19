@@ -4,6 +4,7 @@ import Foundation
 public enum StageOneRules {
     public static let playerLimits = Array(2...8)
     public static let xpPerLevel = 100
+    public static let xpPerCompletedGame = 10
 
     public static func guestName(randomIndex: Int, number: Int) -> String {
         let names = ["PandaPixel", "BurbujaMax", "NinjaDoodle", "AeroPanda", "PincelVeloz"]

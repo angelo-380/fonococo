@@ -214,6 +214,7 @@ public struct StageOneRootView: View {
     private func recordCompletedGame(_ room: RoomSnapshot) {
         guard profile.lastCompletedRoomID != room.id else { return }
         profile.gamesPlayed += 1
+        profile.xp += StageOneRules.xpPerCompletedGame
         profile.drawings += room.chains.flatMap(\.entries).filter {
             $0.authorID == profile.userID && $0.drawingURL != nil
         }.count

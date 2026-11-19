@@ -13,6 +13,7 @@ import Foundation
         assert(!StageOneRules.usernameIsLocallyAvailable("existing", existing: ["Existing"]))
 
         assert(StageOneRules.playerLimits == Array(2...8))
+        assert(StageOneRules.xpPerCompletedGame == 10)
         assert(StageOneRules.level(for: 0) == 1 && StageOneRules.xpWithinLevel(for: 0) == 0)
         assert(StageOneRules.level(for: 100) == 2 && StageOneRules.xpWithinLevel(for: 100) == 0)
         assert(StageOneRules.level(for: 245) == 3 && StageOneRules.xpWithinLevel(for: 245) == 45)
