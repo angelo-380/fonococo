@@ -8,7 +8,7 @@ public final class HistoryViewController: UITableViewController {
         super.viewDidLoad()
         tableView.backgroundColor = .clear
         tableView.separatorStyle = .none
-        navigationController?.navigationBar.tintColor = UIColor(red: 0.12, green: 0.50, blue: 0.96, alpha: 1)
+        navigationController?.navigationBar.tintColor = UIColor(red: 128/255, green: 87/255, blue: 231/255, alpha: 1)
         historyTable = tableView
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Album")
     }

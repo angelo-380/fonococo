@@ -5,13 +5,13 @@ import UIKit
 import FonococoCore
 
 private enum Aero {
-    static let sky = Color(red: 0.12, green: 0.50, blue: 0.96)
-    static let aqua = Color(red: 0.37, green: 0.83, blue: 0.98)
-    static let violet = Color(red: 0.10, green: 0.38, blue: 0.78)
+    static let sky = Color(red: 91/255, green: 200/255, blue: 245/255)
+    static let aqua = Color(red: 69/255, green: 222/255, blue: 197/255)
+    static let violet = Color(red: 128/255, green: 87/255, blue: 231/255)
     static let yellow = Color(red: 1, green: 211/255, blue: 105/255)
     static let coral = Color(red: 1, green: 120/255, blue: 153/255)
-    static let ink = Color(red: 0.10, green: 0.17, blue: 0.28)
-    static let backdrop = LinearGradient(colors: [Color(red: 0.87, green: 0.95, blue: 1), Color(red: 0.80, green: 0.91, blue: 1), Color(red: 0.92, green: 0.98, blue: 1)], startPoint: .topLeading, endPoint: .bottomTrailing)
+    static let ink = Color(red: 32/255, green: 43/255, blue: 82/255)
+    static let backdrop = LinearGradient(colors: [Color(red: 0.84, green: 0.97, blue: 1), Color(red: 0.82, green: 1, blue: 0.94), Color(red: 0.92, green: 0.91, blue: 1)], startPoint: .topLeading, endPoint: .bottomTrailing)
 }
 
 private struct PressFeedbackStyle: ButtonStyle {
@@ -204,14 +204,14 @@ public struct StageOneRootView: View {
                             .font(.system(size: selectedTab == tab ? 22 : 19, weight: .bold))
                         Text(tab.rawValue).font(.system(size: 10, weight: .bold, design: .rounded))
                     }
-                    .foregroundStyle(.white.opacity(selectedTab == tab ? 1 : 0.66))
+                    .foregroundStyle(selectedTab == tab ? Aero.ink : Aero.ink.opacity(0.54))
                     .frame(maxWidth: .infinity, minHeight: 62)
                     .contentShape(Rectangle())
                     .background {
                         if selectedTab == tab {
-                            Capsule().fill(Aero.sky.opacity(0.34)).activeTabGlass()
-                                .overlay(Capsule().stroke(.white.opacity(0.55), lineWidth: 1))
-                                .shadow(color: Aero.aqua.opacity(0.5), radius: 14, y: 3)
+                            Capsule().fill(.white.opacity(0.65)).activeTabGlass()
+                                .overlay(Capsule().stroke(.white.opacity(0.95), lineWidth: 1.5))
+                                .shadow(color: Aero.sky.opacity(0.18), radius: 12, y: 3)
                                 .padding(.horizontal, 5)
                                 .matchedGeometryEffect(id: "selected-tab", in: tabAnimation)
                         }
@@ -220,9 +220,9 @@ public struct StageOneRootView: View {
             }
         }
         .padding(7)
-        .background(Aero.ink.opacity(0.88), in: Capsule())
+        .background(.white.opacity(0.55), in: Capsule())
         .tabGlass()
-        .shadow(color: Aero.ink.opacity(0.28), radius: 20, y: 10)
+        .shadow(color: Aero.ink.opacity(0.12), radius: 20, y: 10)
         .padding(.horizontal, 30).padding(.top, 6).padding(.bottom, 8)
     }
 
@@ -474,7 +474,7 @@ private extension View {
         else { background(.ultraThinMaterial, in: Capsule()).overlay(Capsule().stroke(.white.opacity(0.9), lineWidth: 1.5)) }
     }
     @ViewBuilder func activeTabGlass() -> some View {
-        if #available(iOS 26, *) { glassEffect(.regular.tint(Aero.sky.opacity(0.5)).interactive(), in: Capsule()) }
+        if #available(iOS 26, *) { glassEffect(.regular.tint(.white.opacity(0.45)).interactive(), in: Capsule()) }
         else { background(.regularMaterial, in: Capsule()) }
     }
 }

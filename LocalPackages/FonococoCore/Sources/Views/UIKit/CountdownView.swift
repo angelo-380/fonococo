@@ -16,9 +16,9 @@ public final class CountdownUIView: UIView {
     private var deadline: Date?
     public override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = UIColor(red: 0.12, green: 0.50, blue: 0.96, alpha: 1)
+        backgroundColor = UIColor(red: 91/255, green: 200/255, blue: 245/255, alpha: 1)
         layer.cornerRadius = 26
-        layer.shadowColor = UIColor(red: 0.37, green: 0.83, blue: 0.98, alpha: 1).cgColor
+        layer.shadowColor = UIColor(red: 69/255, green: 222/255, blue: 197/255, alpha: 1).cgColor
         layer.shadowOpacity = 0.2
         layer.shadowRadius = 12
         layer.shadowOffset = CGSize(width: 0, height: 5)

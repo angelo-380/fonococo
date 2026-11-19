@@ -2,11 +2,11 @@ import SwiftUI
 import SwiftData
 
 private enum Theme {
-    static let accent = Color(red: 0.12, green: 0.50, blue: 0.96)
-    static let aqua = Color(red: 0.37, green: 0.83, blue: 0.98)
-    static let violet = Color(red: 0.10, green: 0.38, blue: 0.78)
-    static let ink = Color(red: 0.10, green: 0.17, blue: 0.28)
-    static let cream = Color(red: 0.92, green: 0.97, blue: 1)
+    static let accent = Color(red: 91/255, green: 200/255, blue: 245/255)
+    static let aqua = Color(red: 69/255, green: 222/255, blue: 197/255)
+    static let violet = Color(red: 128/255, green: 87/255, blue: 231/255)
+    static let ink = Color(red: 32/255, green: 43/255, blue: 82/255)
+    static let cream = Color(red: 0.88, green: 0.97, blue: 1)
 }
 
 private struct GlassCard: ViewModifier {
