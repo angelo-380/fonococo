@@ -25,6 +25,7 @@ private struct GameProfile: Codable, Equatable {
     var drawings = 0
     var guesses = 0
     var isGuest = true
+    var lastCompletedRoomID: String?
     var level: Int { StageOneRules.level(for: xp) }
     var levelXP: Int { StageOneRules.xpWithinLevel(for: xp) }
     static func load() -> GameProfile {
@@ -119,6 +120,7 @@ public struct StageOneRootView: View {
         .onChange(of: auth.player?.id) { _, id in if id == nil { profile = GameProfile(); UserDefaults.standard.removeObject(forKey: "fonococo.profile.v1") } }
         .onChange(of: game.state) { _, phase in
             if phase == .writing || phase == .drawing || phase == .revealing { sheet = nil }
+            if phase == .revealing, let room = game.room { recordCompletedGame(room) }
         }
     }
 
@@ -208,6 +210,14 @@ public struct StageOneRootView: View {
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { withAnimation { booted = true } }
+    }
+    private func recordCompletedGame(_ room: RoomSnapshot) {
+        guard profile.lastCompletedRoomID != room.id else { return }
+        profile.gamesPlayed += 1
+        profile.drawings += room.chains.flatMap(\.entries).filter {
+            $0.authorID == profile.userID && $0.drawingURL != nil
+        }.count
+        profile.lastCompletedRoomID = room.id
     }
     private func makeGuest() {
         let name = StageOneRules.guestName(randomIndex: Int.random(in: 0...4), number: Int.random(in: 10...99))
