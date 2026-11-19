@@ -11,6 +11,8 @@ import UIKit
     @Published public var tool: CanvasTool = .pen
     @Published public var width: CGFloat = 3
     @Published public var undoToken = 0
+    @Published public var redoToken = 0
+    @Published public private(set) var photoSaved = false
     @Published public private(set) var points: [CGPoint] = []
     @Published public private(set) var errorMessage: String?
     private let drafts: StrokeDraftStore?
@@ -40,24 +42,29 @@ import UIKit
 
     public func capture(points: [CGPoint]) { self.points = points }
     public func undo() { undoToken += 1 }
+    public func redo() { redoToken += 1 }
     public func clear() { drawingData = PKDrawing().dataRepresentation() }
     public func report(_ error: Error) { errorMessage = error.localizedDescription; state = .error }
 
     public func pngData() throws -> Data {
         let drawing = try PKDrawing(data: drawingData)
+        let bounds = drawing.bounds.insetBy(dx: -8, dy: -8)
+        let scale = min(8, max(3, 2048 / max(bounds.width, bounds.height)))
         guard !drawing.strokes.isEmpty, !drawing.bounds.isEmpty,
-              let data = drawing.image(from: drawing.bounds.insetBy(dx: -8, dy: -8), scale: 1).pngData() else {
+              let data = drawing.image(from: bounds, scale: scale).pngData() else {
             throw CanvasError.emptyDrawing
         }
         return data
     }
 
     public func saveToPhotos() async {
+        photoSaved = false
         do {
             let data = try pngData()
             guard let image = UIImage(data: data) else { throw CanvasError.emptyDrawing }
             try await PhotoLibrarySaver().save(image)
             errorMessage = nil
+            photoSaved = true
         } catch { report(error) }
     }
 
