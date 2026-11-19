@@ -15,7 +15,7 @@ private struct BootstrapView: View {
     var body: some View {
         VStack {
             if let dependencies {
-                GameRootView(auth: dependencies.auth, game: dependencies.game, canvas: dependencies.canvas, album: dependencies.album)
+                StageOneRootView(auth: dependencies.auth, game: dependencies.game, canvas: dependencies.canvas, album: dependencies.album, firebaseConfigured: dependencies.firebaseConfigured)
                     .modelContainer(dependencies.albums)
             } else {
                 Text(message)
@@ -27,14 +27,24 @@ private struct BootstrapView: View {
     private func prepare() async {
         guard dependencies == nil else { return }
         do {
-            try AppEnvironment.configureFirebase()
+            let firebaseConfigured: Bool
+            do { try AppEnvironment.configureFirebase(); firebaseConfigured = true }
+            catch { firebaseConfigured = false }
             let albums = try ModelContainer(for: ArchivedAlbum.self)
             let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                                          appropriateFor: nil, create: true)
             let drafts = try await StrokeDraftStore.make(storeURL: directory.appendingPathComponent("StrokeDrafts.sqlite"))
-            let auth = AuthViewModel(service: try FirebaseServiceFactory.auth())
-            let game = GameViewModel(service: try FirebaseServiceFactory.rooms(), storage: try FirebaseServiceFactory.sessionMedia())
-            dependencies = Dependencies(auth: auth, game: game, canvas: CanvasViewModel(drafts: drafts), album: AlbumViewModel(storage: try FirebaseServiceFactory.sessionMedia()), albums: albums)
+            let authService: any AuthServicing
+            let roomService: any RoomServicing
+            let mediaService: any MediaStorageServicing
+            if firebaseConfigured, let auth = try? FirebaseServiceFactory.auth(), let rooms = try? FirebaseServiceFactory.rooms(), let media = try? FirebaseServiceFactory.sessionMedia() {
+                authService = auth; roomService = rooms; mediaService = media
+            } else {
+                authService = LocalDemoAuthService(); roomService = LocalDemoRoomService(); mediaService = LocalDemoMediaService()
+            }
+            let auth = AuthViewModel(service: authService)
+            let game = GameViewModel(service: roomService, storage: mediaService)
+            dependencies = Dependencies(auth: auth, game: game, canvas: CanvasViewModel(drafts: drafts), album: AlbumViewModel(storage: mediaService), albums: albums, firebaseConfigured: firebaseConfigured)
         } catch { message = error.localizedDescription }
     }
 }
@@ -46,7 +56,8 @@ private final class Dependencies {
     let canvas: CanvasViewModel
     let albums: ModelContainer
     let album: AlbumViewModel
-    init(auth: AuthViewModel, game: GameViewModel, canvas: CanvasViewModel, album: AlbumViewModel, albums: ModelContainer) {
-        self.auth = auth; self.game = game; self.canvas = canvas; self.album = album; self.albums = albums
+    let firebaseConfigured: Bool
+    init(auth: AuthViewModel, game: GameViewModel, canvas: CanvasViewModel, album: AlbumViewModel, albums: ModelContainer, firebaseConfigured: Bool) {
+        self.auth = auth; self.game = game; self.canvas = canvas; self.album = album; self.albums = albums; self.firebaseConfigured = firebaseConfigured
     }
 }

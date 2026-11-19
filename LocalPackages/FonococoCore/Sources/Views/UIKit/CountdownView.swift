@@ -18,7 +18,7 @@ public final class CountdownUIView: UIView {
         super.init(frame: frame)
         backgroundColor = UIColor(red: 1, green: 0.34, blue: 0.08, alpha: 1)
         layer.cornerRadius = 26
-        layer.shadowColor = UIColor.orange.cgColor
+        layer.shadowColor = UIColor(red: 1, green: 0.69, blue: 0.22, alpha: 1).cgColor
         layer.shadowOpacity = 0.2
         layer.shadowRadius = 12
         layer.shadowOffset = CGSize(width: 0, height: 5)

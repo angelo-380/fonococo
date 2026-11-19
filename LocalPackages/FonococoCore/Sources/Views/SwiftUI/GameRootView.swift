@@ -2,7 +2,9 @@ import SwiftUI
 import SwiftData
 
 private enum Theme {
-    static let orange = Color(red: 1, green: 0.34, blue: 0.08)
+    static let accent = Color(red: 1, green: 0.34, blue: 0.08)
+    static let aqua = Color(red: 1, green: 0.69, blue: 0.22)
+    static let violet = Color(red: 0.95, green: 0.43, blue: 0.18)
     static let ink = Color(red: 0.20, green: 0.13, blue: 0.10)
     static let cream = Color(red: 1, green: 0.97, blue: 0.93)
 }
@@ -32,9 +34,9 @@ private struct OrangeButton: ButtonStyle {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
             .foregroundStyle(prominent ? .white : Theme.ink)
-            .background(prominent ? Theme.orange : .white.opacity(0.7), in: Capsule())
+            .background(prominent ? LinearGradient(colors: [Theme.accent, Theme.aqua], startPoint: .leading, endPoint: .trailing) : LinearGradient(colors: [.white.opacity(0.78), .white.opacity(0.58)], startPoint: .top, endPoint: .bottom), in: Capsule())
             .overlay(Capsule().stroke(.white.opacity(0.7)))
-            .shadow(color: Theme.orange.opacity(prominent ? 0.22 : 0.07), radius: 12, y: 5)
+            .shadow(color: Theme.accent.opacity(prominent ? 0.25 : 0.07), radius: 12, y: 5)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.easeOut(duration: 0.18), value: configuration.isPressed)
     }
@@ -58,19 +60,26 @@ public struct GameRootView: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 18) {
             if let player = auth.player {
-                Text(player.nickname).font(.system(size: 34, weight: .black, design: .rounded))
-                VStack(spacing: 12) {
-                    TextField("Identificador de sala", text: $game.roomID)
-                        .textFieldStyle(.plain).padding(16)
-                        .background(.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 17))
-                    HStack(spacing: 10) {
-                        Button("Crear sala") { Task { await game.create(player: player) } }
-                            .buttonStyle(OrangeButton(prominent: true))
-                        Button("Conectar a sala") { game.connect(player: player) }
-                            .buttonStyle(OrangeButton())
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(player.nickname).font(.system(size: 23, weight: .black, design: .rounded))
+                        Text(game.state == .drawing ? "Tu turno de dibujo" : game.state == .writing ? "Tu turno de frase" : "Partida en curso")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded)).foregroundStyle(Theme.ink.opacity(0.56))
                     }
-                    Button("Cerrar sesión") { album.cancelRecording(); game.leave(); auth.signOut() }
-                        .buttonStyle(OrangeButton())
+                    Spacer(minLength: 8)
+                    Button { album.cancelRecording(); game.leave() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .frame(width: 34, height: 34)
+                            .background(.white.opacity(0.8), in: Circle())
+                    }
+                    .accessibilityLabel("Salir de partida")
+                    Button { album.cancelRecording(); game.leave(); auth.signOut() } label: {
+                        Label("Cerrar sesión", systemImage: "rectangle.portrait.and.arrow.right")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .background(.white.opacity(0.8), in: Capsule())
+                    }.fixedSize().accessibilityLabel("Cerrar sesión")
                 }.card()
                 gameContent
             } else {
@@ -112,8 +121,8 @@ public struct GameRootView: View {
         .background {
             ZStack {
                 Theme.cream
-                Circle().fill(Theme.orange.opacity(0.27)).frame(width: 330).blur(radius: 75).offset(x: 170, y: -280)
-                Circle().fill(Color.yellow.opacity(0.27)).frame(width: 320).blur(radius: 80).offset(x: -180, y: 260)
+                Circle().fill(Theme.accent.opacity(0.27)).frame(width: 330).blur(radius: 75).offset(x: 170, y: -280)
+                Circle().fill(Theme.aqua.opacity(0.27)).frame(width: 320).blur(radius: 80).offset(x: -180, y: 260)
             }.ignoresSafeArea()
         }
         .foregroundStyle(Theme.ink)
@@ -166,12 +175,12 @@ public struct GameRootView: View {
                     .frame(height: 320).background(.white, in: RoundedRectangle(cornerRadius: 22))
                     .clipShape(RoundedRectangle(cornerRadius: 22))
                     .task(id: turn.id) { await canvas.open(roomID: room.id, turnID: turn.id) }
-                    .disabled(!game.canSubmit)
+                    .disabled(game.timeExpired || game.submitting || canvas.state == .loading || canvas.state == .error)
                 HStack {
                     Button("Lápiz") { canvas.tool = .pen }
                     Button("Borrador") { canvas.tool = .eraser }
                     Button("Deshacer") { canvas.undo() }
-                }.buttonStyle(.bordered).tint(Theme.orange)
+                }.buttonStyle(.bordered).tint(Theme.violet)
                 Button("Guardar en Fotos") { Task { await canvas.saveToPhotos() } }
                     .buttonStyle(OrangeButton())
                 Button("Enviar dibujo") {
@@ -184,12 +193,27 @@ public struct GameRootView: View {
         case .revealing:
             Text("Álbum final").font(.system(size: 30, weight: .black, design: .rounded))
             ForEach(game.room?.chains ?? []) { chain in
-                VStack {
-                    Text("Cadena \(chain.id)")
+                VStack(alignment: .leading, spacing: 12) {
+                    let index = (game.room?.chains.firstIndex(where: { $0.id == chain.id }) ?? 0) + 1
+                    Label("Libro creativo \(index)", systemImage: "book.closed.fill")
+                        .font(.system(size: 17, weight: .heavy, design: .rounded))
                     ForEach(chain.entries) { entry in
-                        Text(entry.text ?? "Dibujo de \(entry.authorID)")
-                        if let url = entry.drawingURL { DrawingPreview(url: url, album: album) }
-                        if let url = entry.audioURL { Text(url.absoluteString) }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(game.playersByID[entry.authorID]?.nickname ?? "Jugador")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(Theme.ink.opacity(0.55))
+                            if let text = entry.text {
+                                Text(text).font(.system(size: 19, weight: .bold, design: .rounded))
+                            }
+                            if let url = entry.drawingURL { DrawingPreview(url: url, album: album) }
+                            if entry.audioURL != nil {
+                                Label("Reacción grabada", systemImage: "waveform")
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            }
+                        }
+                        .padding(11)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 17))
                     }
                 }.card()
             }
