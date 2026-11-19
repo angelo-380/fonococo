@@ -25,6 +25,7 @@ REST usa rutas relativas configuradas, GET y cabecera X-API-Key, respuesta de fr
 
 ## Capas
 
+- Etapa 1 (SwiftUI): splash, sesión invitada local, autenticación Firebase disponible, lobby, salas privadas locales de 2–8, búsqueda aleatoria demostrativa, perfil, progreso y amigos locales. Las salas locales y matchmaking no conectan dispositivos.
 - Config: carga de Bundle e inicialización Firebase.
 - Models: datos Codable y estados propios.
 - Services: protocolos/adaptadores Firebase, REST y audio.
@@ -47,7 +48,7 @@ Los álbumes guardados incluyen bytes de PNG y audio; si falla alguna descarga, 
 
 GameEngine implementa reglas propias solicitadas: N participantes fijos, N rondas (índice r=0...N−1), libro asignado a i = (i+r)%N, escritura en índices pares y dibujo en impares. Cada libro termina con N entradas de N autores distintos. La fórmula usa índices cero; la ronda visible 2 corresponde a r=1. Un turno vencido conserva una entrada vacía para no romper la cadena.
 
-Los wireframes permiten crear sala, copiar su identificador, entrar e iniciar (primer jugador). Valores iniciales propios: 12 plazas, 60 segundos de escritura, 90 de dibujo. FirebaseRoomService ejecuta creación, admisión, inicio, contribución y avance como transacciones sobre rooms/{id}/snapshot. RealtimeMediaService comprime el dibujo y guarda Base64 antes de intentar confirmar el turno; si éste venció, la entrega se rechaza (el archivo puede quedar huérfano y requiere política de limpieza).
+El flujo SwiftUI de Etapa 1 limita la creación y los ajustes de sala a 2–8 participantes. Las salas locales se identifican como demostración y no admiten conexión entre dispositivos. El motor y FirebaseRoomService conservan sus modelos y compatibilidad; sus valores históricos contemplan hasta 12 participantes y sus operaciones remotas requieren configuración Firebase. FirebaseRoomService ejecuta creación, admisión, inicio, contribución y avance como transacciones sobre rooms/{id}/snapshot. RealtimeMediaService comprime el dibujo y guarda Base64 antes de intentar confirmar el turno; si éste venció, la entrega se rechaza (el archivo puede quedar huérfano y requiere política de limpieza).
 
 Esta implementación sustituye el contrato anterior de submissions: el motor Swift modifica snapshots completos mediante transacciones. Las reglas Firebase del proyecto deben permitir esas operaciones a los miembros autenticados. Es un motor coordinado por clientes, no una Cloud Function autoritativa: necesita al menos un cliente conectado para cerrar el plazo, usa reloj de dispositivo y el snapshot contiene libros completos. Para partidas adversariales se debe mover la misma lógica a servidor y restringir lectura por jugador; no desplegar reglas públicas para habilitarlo. Los participantes quedan fijos al iniciar y los desconectados completan por timeout.
 
