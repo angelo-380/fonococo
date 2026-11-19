@@ -2,14 +2,17 @@ import Foundation
 
 /// Fonococo rules. Round is zero-based: first phrase r=0, then book (i+r)%N.
 public enum GameEngine {
+    /// Gives an automatic drawing upload time to finish after the visible timer reaches zero.
+    public static let drawingSubmissionGrace: TimeInterval = 15
     public static func start(_ room: RoomSnapshot, now: Date) throws -> RoomSnapshot {
         guard room.phase == .lobby, room.players.count >= 2,
               let settings = room.settings, room.players.count <= settings.playerLimit else { throw ServiceError.invalidPayload }
         return round(room, index: 0, chains: room.players.map { GameChain(id: $0.id) }, now: now)
     }
     public static func contribute(_ room: RoomSnapshot, entry: ChainEntry, turnID: String, now: Date) throws -> RoomSnapshot {
-        guard let deadline = room.deadline, now < deadline,
+        guard let deadline = room.deadline,
               let turn = room.turns.first(where: { $0.id == turnID && $0.playerID == entry.authorID }),
+              now < deadline.addingTimeInterval(turn.kind == .drawing ? drawingSubmissionGrace : 0),
               entry.id == turn.id else { throw ServiceError.invalidPayload }
         var chains = room.chains
         guard let index = chains.firstIndex(where: { $0.id == turn.chainID }) else { throw ServiceError.invalidPayload }
@@ -27,7 +30,8 @@ public enum GameEngine {
               let current = room.turns.first?.round else { return room }
         let ids = Set(room.chains.flatMap(\.entries).map(\.id))
         let complete = room.turns.allSatisfy { ids.contains($0.id) }
-        guard complete || (room.deadline.map { now >= $0 } ?? false) else { return room }
+        let grace = room.phase == .drawing ? drawingSubmissionGrace : 0
+        guard complete || (room.deadline.map { now >= $0.addingTimeInterval(grace) } ?? false) else { return room }
         var chains = room.chains
         for turn in room.turns where !ids.contains(turn.id) {
             if let index = chains.firstIndex(where: { $0.id == turn.chainID }) {

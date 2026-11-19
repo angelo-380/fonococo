@@ -14,7 +14,14 @@ import Foundation
      for turn in turns {
       room = try GameEngine.contribute(room, entry: ChainEntry(id: turn.id, authorID: turn.playerID, text: "phrase"), turnID: turn.id, now: room.deadline!.addingTimeInterval(-1))
      }
-    } else { room = GameEngine.advance(room, now: room.deadline!) }
+    } else {
+     let deadline = room.deadline!
+     assert(GameEngine.advance(room, now: deadline).phase == .drawing)
+     let turn = room.turns[0]
+     let drawing = URL(string: "rtdb-media://rooms/test/media/drawing")!
+     room = try GameEngine.contribute(room, entry: ChainEntry(id: turn.id, authorID: turn.playerID, drawingURL: drawing), turnID: turn.id, now: deadline.addingTimeInterval(1))
+     room = GameEngine.advance(room, now: deadline.addingTimeInterval(GameEngine.drawingSubmissionGrace))
+    }
    }
    assert(room.phase == .revealing)
    assert(room.chains.allSatisfy { $0.entries.count == n && Set($0.entries.map(\.authorID)).count == n })

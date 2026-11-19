@@ -10,6 +10,7 @@ import Foundation
     @Published public private(set) var timeExpired = false
     @Published public private(set) var submitting = false
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var submissionFeedback: String?
     @Published public var roomID = ""
     @Published public var sentence = ""
     private let service: any RoomServicing
@@ -119,7 +120,8 @@ import Foundation
         }
         remainingSeconds = max(0, Int(ceil(deadline.timeIntervalSinceNow)))
         timeExpired = remainingSeconds == 0
-        if timeExpired, !advancing, let roomID = room?.id {
+        let closeAt = state == .drawing ? deadline.addingTimeInterval(GameEngine.drawingSubmissionGrace) : deadline
+        if Date() >= closeAt, !advancing, let roomID = room?.id {
             advancing = true
             let token = generation
             Task { [weak self, service] in
@@ -141,20 +143,36 @@ import Foundation
         await submit(text: nil, png: png)
     }
 
-    private func submit(text: String?, png: Data?) async {
-        guard canSubmit, let turn = activeTurn, let playerID, let room else { return }
+    public func autoSubmitDrawing(png: Data) async {
+        guard state == .drawing, timeExpired, !png.isEmpty else { return }
+        await submit(text: nil, png: png, automatic: true)
+    }
+
+    private func submit(text: String?, png: Data?, automatic: Bool = false) async {
+        guard let turn = activeTurn, let playerID, let room,
+              !submitting, !submittedTurnIDs.contains(turn.id),
+              !(room.chains.flatMap(\.entries).contains(where: { $0.id == turn.id })),
+              (automatic ? turn.kind == .drawing && timeExpired : canSubmit) else { return }
         let token = generation
         submitting = true
         defer { if generation == token { submitting = false } }
         do {
             var drawingURL: URL?
             if let png { drawingURL = try await storage.uploadPNG(png, roomID: room.id) }
-            guard generation == token, activeTurn?.id == turn.id, !timeExpired else { return }
+            let withinDrawingGrace = png != nil && Date() < (room.deadline?.addingTimeInterval(GameEngine.drawingSubmissionGrace) ?? .distantPast)
+            guard generation == token, activeTurn?.id == turn.id,
+                  !timeExpired || automatic || withinDrawingGrace else { return }
             let entry = ChainEntry(id: turn.id, authorID: playerID, text: text, drawingURL: drawingURL, audioURL: nil)
             try await service.submit(roomID: room.id, entry: entry, turnID: turn.id)
             guard generation == token else { return }
             submittedTurnIDs.insert(turn.id)
             sentence = ""
+            let feedback = png == nil ? "Frase enviada" : "Dibujo enviado correctamente"
+            submissionFeedback = feedback
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1.5))
+                if self?.generation == token, self?.submissionFeedback == feedback { self?.submissionFeedback = nil }
+            }
         } catch {
             guard generation == token else { return }
             // Keep the server phase so the user can retry without losing the draft.
@@ -170,6 +188,7 @@ import Foundation
         submittedTurnIDs.removeAll(); sentence = ""
         remainingSeconds = 0; timeExpired = false; submitting = false; advancing = false
         errorMessage = nil; state = .idle
+        submissionFeedback = nil
     }
 
     private func fail(_ message: String) { errorMessage = message; state = .error; timer?.invalidate() }
