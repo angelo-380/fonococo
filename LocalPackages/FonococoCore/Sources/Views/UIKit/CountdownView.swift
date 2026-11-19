@@ -17,14 +17,14 @@ public final class CountdownUIView: UIView {
     public override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = UIColor(red: 91/255, green: 200/255, blue: 245/255, alpha: 1)
-        layer.cornerRadius = 26
+        layer.cornerRadius = 36
         layer.shadowColor = UIColor(red: 69/255, green: 222/255, blue: 197/255, alpha: 1).cgColor
         layer.shadowOpacity = 0.2
         layer.shadowRadius = 12
         layer.shadowOffset = CGSize(width: 0, height: 5)
         label.textAlignment = .center
-        let timerFont = UIFont.systemFont(ofSize: 25, weight: .heavy)
-        label.font = UIFont(descriptor: timerFont.fontDescriptor.withDesign(.rounded) ?? timerFont.fontDescriptor, size: 25)
+        let timerFont = UIFont.systemFont(ofSize: 40, weight: .heavy)
+        label.font = UIFont(descriptor: timerFont.fontDescriptor.withDesign(.rounded) ?? timerFont.fontDescriptor, size: 40)
         label.textColor = .white
         addSubview(label)
         label.translatesAutoresizingMaskIntoConstraints = false
