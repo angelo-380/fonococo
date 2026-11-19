@@ -191,7 +191,7 @@ public struct StageOneRootView: View {
         case .createRoom: CreateRoomSheet(game: game, player: auth.player, configured: firebaseConfigured, onCreated: { createdRoomName = $0; sheet = .waitingRoom })
         case .waitingRoom: WaitingRoomSheet(game: game, profile: profile, configured: firebaseConfigured, roomName: createdRoomName, onExit: { game.leave(); sheet = nil })
         case .matchmaking: MatchmakingSheet(profile: profile, configured: firebaseConfigured)
-        case .editProfile: EditProfileSheet(profile: $profile)
+        case .editProfile: EditProfileSheet(profile: $profile, existingUsernames: (friends + incoming + outgoingFriends).map(\.username))
         case .addFriend: AddFriendSheet(profile: profile, friends: $friends, incoming: $incoming, outgoing: $outgoingFriends)
         case .signup: AccountSheet(auth: auth, configured: firebaseConfigured, isSignup: true, onDone: { username in sheet = nil; syncProfile(username: username) })
         case .login: AccountSheet(auth: auth, configured: firebaseConfigured, isSignup: false, onDone: { _ in sheet = nil; syncProfile() })
@@ -310,15 +310,16 @@ private struct MatchmakingSheet: View {
 
 private struct EditProfileSheet: View {
     @Binding var profile: GameProfile
+    let existingUsernames: [String]
     @Environment(\.dismiss) private var dismiss
     @State private var username: String
     @State private var nickname: String
     @State private var photo: PhotosPickerItem?
     @State private var error: String?
     private let avatars = ["🐼", "🦊", "🐸", "🐱", "🐻", "🐯", "🐰", "🐙"]
-    init(profile: Binding<GameProfile>) { _profile = profile; _username = State(initialValue: profile.wrappedValue.username); _nickname = State(initialValue: profile.wrappedValue.nickname) }
+    init(profile: Binding<GameProfile>, existingUsernames: [String]) { _profile = profile; self.existingUsernames = existingUsernames; _username = State(initialValue: profile.wrappedValue.username); _nickname = State(initialValue: profile.wrappedValue.nickname) }
     var body: some View { VStack(spacing: 15) { Text("Editar perfil").font(.system(size: 24, weight: .black, design: .rounded)).foregroundStyle(Aero.ink); PhotosPicker(selection: $photo, matching: .images) { AvatarBadge(emoji: profile.avatar, size: 76, imageData: profile.avatarImageData).overlay(alignment: .bottomTrailing) { Image(systemName: "camera.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.white).padding(7).background(Aero.violet, in: Circle()) } }; HStack { ForEach(avatars, id: \.self) { avatar in Button { profile.avatar = avatar; profile.avatarImageData = nil } label: { Text(avatar).font(.system(size: 26)).padding(6).background(profile.avatar == avatar ? Aero.sky.opacity(0.3) : .clear, in: Circle()) } } }; TextField("Nombre de usuario", text: $username).textInputAutocapitalization(.never).autocorrectionDisabled().padding(13).background(.white, in: RoundedRectangle(cornerRadius: 14)); TextField("Apodo", text: $nickname).padding(13).background(.white, in: RoundedRectangle(cornerRadius: 14)); if let error { Text(error).font(.caption).foregroundStyle(.red) }; Button("Guardar cambios") { save() }.font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(14).background(Aero.violet, in: Capsule()); Text("El nombre se valida localmente; la disponibilidad global requiere backend.").font(.system(size: 10, weight: .medium, design: .rounded)).foregroundStyle(Aero.ink.opacity(0.5)).multilineTextAlignment(.center) }.padding(22).background(Aero.backdrop).onChange(of: photo) { _, item in Task { if let data = try? await item?.loadTransferable(type: Data.self), let image = UIImage(data: data), let compressed = image.jpegData(compressionQuality: 0.7) { profile.avatar = "📷"; profile.avatarImageData = compressed.base64EncodedString() } } } }
-    private func save() { let user = username.trimmingCharacters(in: .whitespacesAndNewlines); let nick = nickname.trimmingCharacters(in: .whitespacesAndNewlines); let valid = StageOneRules.usernameIsValid(user); guard valid, !nick.isEmpty, nick.count <= 24 else { error = "Usa 3–18 caracteres en el usuario y un apodo de hasta 24."; return }; guard user.caseInsensitiveCompare(profile.username) == .orderedSame || StageOneRules.usernameIsLocallyAvailable(user, existing: ["PandaPixel", "NubeDibuja", "PixelLima", "TintaLunar", "DoodleLima", "MentaPixel"]) else { error = "Ese nombre ya aparece en los datos locales de demostración."; return }; profile.username = user; profile.nickname = nick; dismiss() }
+    private func save() { let user = username.trimmingCharacters(in: .whitespacesAndNewlines); let nick = nickname.trimmingCharacters(in: .whitespacesAndNewlines); let valid = StageOneRules.usernameIsValid(user); guard valid, !nick.isEmpty, nick.count <= 24 else { error = "Usa 3–18 caracteres en el usuario y un apodo de hasta 24."; return }; let localNames = existingUsernames + ["PandaPixel", "NubeDibuja", "PixelLima", "TintaLunar", "DoodleLima", "MentaPixel"]; guard user.caseInsensitiveCompare(profile.username) == .orderedSame || StageOneRules.usernameIsLocallyAvailable(user, existing: localNames) else { error = "Ese nombre ya aparece en los datos locales de demostración."; return }; profile.username = user; profile.nickname = nick; dismiss() }
 }
 
 private struct FriendsList: View {
