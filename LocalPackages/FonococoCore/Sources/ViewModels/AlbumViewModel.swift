@@ -13,10 +13,12 @@ public struct OfflineAlbumPayload: Codable {
     @Published public private(set) var message = ""
     @Published public private(set) var busy = false
     @Published public private(set) var recording = false
+    @Published public private(set) var reactionReady = false
     private let storage: any MediaStorageServicing
     private let recorder = ReactionAudioRecorder()
     private var reactionURLs: [String: [URL]] = [:]
     private var recordingRoomID: String?
+    private var pendingReaction: URL?
 
     public init(storage: any MediaStorageServicing) {
         self.storage = storage
@@ -24,21 +26,33 @@ public struct OfflineAlbumPayload: Codable {
 
     public func startRecording(roomID: String) async {
         guard !busy, !recording else { return }
+        discardReaction()
         do {
             try await recorder.start()
             recording = true; recordingRoomID = roomID; message = "Grabando reacción."
         } catch { message = error.localizedDescription }
     }
 
+    public func stopRecording() {
+        guard recording else { return }
+        do { pendingReaction = try recorder.stop(); reactionReady = true; recording = false; message = "Reacción lista para subir." }
+        catch { message = error.localizedDescription }
+    }
+
+    public func discardReaction() {
+        if recording { recorder.cancel() }
+        if let pendingReaction { try? FileManager.default.removeItem(at: pendingReaction) }
+        pendingReaction = nil; reactionReady = false; recording = false; recordingRoomID = nil
+    }
+
     public func stopAndUpload() async {
-        guard recording, let roomID = recordingRoomID else { return }
+        guard reactionReady, let localURL = pendingReaction, let roomID = recordingRoomID else { return }
         busy = true
-        defer { busy = false; recording = false; recordingRoomID = nil }
+        defer { busy = false }
         do {
-            let localURL = try recorder.stop()
             let url = try await storage.uploadAudio(fileURL: localURL, roomID: roomID)
             reactionURLs[roomID, default: []].append(url)
-            try? FileManager.default.removeItem(at: localURL)
+            discardReaction()
             message = "Reacción subida; se incluirá en tu copia local del álbum."
         } catch { message = error.localizedDescription }
     }
@@ -46,7 +60,7 @@ public struct OfflineAlbumPayload: Codable {
     public func loadMedia(_ url: URL) async throws -> Data { try await storage.download(url) }
 
     public func cancelRecording() {
-        recorder.cancel(); recording = false; recordingRoomID = nil
+        discardReaction()
     }
 
     public func archive(room: RoomSnapshot, context: ModelContext) async {

@@ -27,7 +27,7 @@ import Foundation
             let url = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension("m4a")
             let recorder = try AVAudioRecorder(url: url, settings: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44_100, AVNumberOfChannelsKey: 1])
             recorder.delegate = self
-            guard recorder.record(forDuration: 60) else { throw ServiceError.recordingFailed }
+            guard recorder.record() else { throw ServiceError.recordingFailed }
             self.recorder = recorder; isRecording = true; lastError = nil
         } catch {
             try? session.setActive(false, options: .notifyOthersOnDeactivation)
