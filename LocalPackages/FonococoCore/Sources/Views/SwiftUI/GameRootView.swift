@@ -90,6 +90,7 @@ public struct GameRootView: View {
             }
             if let message = game.errorMessage { Text(message).foregroundStyle(.red).card() }
             if let message = canvas.errorMessage { Text(message).foregroundStyle(.red).card() }
+            if let message = canvas.photoMessage { Text(message).font(.subheadline).card() }
             Text(album.message).font(.subheadline).foregroundStyle(.secondary)
           }
           .frame(maxWidth: 680).padding(.horizontal, 22).padding(.top, 26).padding(.bottom, 45)
@@ -104,11 +105,30 @@ public struct GameRootView: View {
         }
         .foregroundStyle(Theme.ink)
         .scrollDismissesKeyboard(.interactively)
-        .sheet(isPresented: $showColorDisc) {
-            ColorDisc(color: $brushColor)
-                .padding(28)
-                .presentationDetents([.height(350)])
-                .presentationDragIndicator(.visible)
+        .overlay {
+            if game.submissionFeedback != nil || game.submitting {
+                ZStack {
+                    Theme.cream.ignoresSafeArea()
+                    VStack(spacing: 18) {
+                        if let feedback = game.submissionFeedback {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 72)).foregroundStyle(Theme.accent)
+                            Text(feedback)
+                                .font(.system(size: 28, weight: .heavy, design: .rounded))
+                                .multilineTextAlignment(.center)
+                        } else {
+                            ProgressView().controlSize(.large)
+                            Text(game.state == .drawing ? "Enviando dibujo…" : "Enviando frase…")
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                        }
+                    }.padding(28)
+                }
+            }
+        }
+        .onChange(of: game.timeExpired) { _, expired in
+            if expired, game.state == .drawing, let png = try? canvas.pngData() {
+                Task { await game.autoSubmitDrawing(png: png) }
+            }
         }
         .onDisappear {
             Task { await canvas.saveDraft() }
@@ -157,7 +177,12 @@ public struct GameRootView: View {
                               onPoints: { canvas.capture(points: $0) }, onError: canvas.report)
                     .frame(height: 320).background(.white, in: RoundedRectangle(cornerRadius: 22))
                     .clipShape(RoundedRectangle(cornerRadius: 22))
-                    .task(id: turn.id) { await canvas.open(roomID: room.id, turnID: turn.id) }
+                    .task(id: turn.id) {
+                        await canvas.open(roomID: room.id, turnID: turn.id)
+                        if game.timeExpired, let png = try? canvas.pngData() {
+                            await game.autoSubmitDrawing(png: png)
+                        }
+                    }
                     .disabled(game.timeExpired || game.submitting || canvas.state == .loading || canvas.state == .error)
                 HStack {
                     Button { canvas.tool = .pencil } label: { Image(systemName: "pencil.tip").frame(minWidth: 44, minHeight: 44) }
@@ -170,7 +195,7 @@ public struct GameRootView: View {
                         .accessibilityLabel("Borrador")
                 }.buttonStyle(.bordered).tint(Theme.violet)
                 HStack {
-                    Button { showColorDisc = true } label: {
+                    Button { withAnimation(.easeInOut(duration: 0.2)) { showColorDisc.toggle() } } label: {
                         Circle().fill(brushColor).frame(width: 30, height: 30)
                             .overlay(Circle().stroke(.white, lineWidth: 3))
                             .shadow(color: .black.opacity(0.2), radius: 3)
@@ -178,6 +203,12 @@ public struct GameRootView: View {
                     Slider(value: $brushSize, in: 1...40).tint(Theme.accent)
                     Text("\(Int(brushSize))").font(.caption.monospacedDigit())
                 }.onChange(of: brushSize) { _, value in canvas.width = CGFloat(value) }
+                if showColorDisc {
+                    ColorDisc(color: $brushColor)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
                 HStack {
                     Button { canvas.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                         .accessibilityLabel("Deshacer")
@@ -248,11 +279,13 @@ public struct GameRootView: View {
     }
 
     private var countdown: some View {
-        HStack {
-            if game.timeExpired { Text("Tiempo agotado. Esperando al servidor.").font(.headline) }
-            Spacer()
-            CountdownView(deadline: game.room?.deadline).frame(width: 64, height: 64)
-        }.card()
+        VStack(spacing: 8) {
+            CountdownView(deadline: game.room?.deadline).frame(width: 220, height: 78)
+            if game.timeExpired {
+                Text(game.state == .drawing ? "Tiempo agotado. Enviando dibujo…" : "Tiempo agotado. Esperando al servidor.")
+                    .font(.subheadline)
+            }
+        }.frame(maxWidth: .infinity).card()
     }
 
 }

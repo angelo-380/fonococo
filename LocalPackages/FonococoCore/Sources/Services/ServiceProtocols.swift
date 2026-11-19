@@ -11,7 +11,7 @@ public enum ServiceError: LocalizedError {
         case .unauthorized: return "Inicia sesión para continuar."
         case .http(let status): return "El servidor respondió con código \(status)."
         case .invalidResponse: return "La respuesta del servidor no es válida."
-        case .permissionDenied: return "No se concedió el permiso requerido."
+        case .permissionDenied: return "No se permitió usar el micrófono. Actívalo en Ajustes para grabar la reacción."
         case .recordingFailed: return "No se pudo grabar el audio."
         }
     }

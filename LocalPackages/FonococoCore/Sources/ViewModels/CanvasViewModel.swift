@@ -13,6 +13,7 @@ import UIKit
     @Published public var undoToken = 0
     @Published public var redoToken = 0
     @Published public private(set) var photoSaved = false
+    @Published public private(set) var photoMessage: String?
     @Published public private(set) var points: [CGPoint] = []
     @Published public private(set) var errorMessage: String?
     private let drafts: StrokeDraftStore?
@@ -59,13 +60,15 @@ import UIKit
 
     public func saveToPhotos() async {
         photoSaved = false
+        photoMessage = nil
         do {
             let data = try pngData()
             guard let image = UIImage(data: data) else { throw CanvasError.emptyDrawing }
             try await PhotoLibrarySaver().save(image)
             errorMessage = nil
             photoSaved = true
-        } catch { report(error) }
+            photoMessage = "Guardado en Fotos."
+        } catch { photoMessage = error.localizedDescription }
     }
 
     public func saveDraft() async {
