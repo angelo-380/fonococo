@@ -63,7 +63,7 @@ public struct OfflineAlbumPayload: Codable {
         discardReaction()
     }
 
-    public func archive(room: RoomSnapshot, context: ModelContext) async {
+    public func archive(room: RoomSnapshot, ownerID: String, context: ModelContext) async {
         guard room.phase == .revealing, !busy, !recording else { return }
         busy = true
         defer { busy = false }
@@ -76,7 +76,7 @@ public struct OfflineAlbumPayload: Codable {
                 media[url.absoluteString] = data
             }
             let payload = OfflineAlbumPayload(room: room, media: media, localReactionURLs: reactions)
-            try AlbumRepository(context: context).save(id: room.id, title: "Partida \(room.id)", payload: JSONEncoder().encode(payload))
+            try AlbumRepository(context: context).save(id: "\(ownerID)|\(room.id)", title: "Partida \(room.id)", payload: JSONEncoder().encode(payload))
             message = "Álbum y \(media.count) archivos guardados offline."
         } catch { message = error.localizedDescription }
     }
