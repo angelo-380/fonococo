@@ -28,6 +28,45 @@ import Foundation
     }
 
     public var isHost: Bool { room?.players.first?.id == playerID }
+    public var currentPlayerID: String? { playerID }
+    public var hasSubmittedCurrentTurn: Bool { activeTurn.map { submittedTurnIDs.contains($0.id) } ?? false }
+    public var allRatingsComplete: Bool {
+        guard let room, room.phase == .revealing else { return false }
+        let drawings = room.chains.flatMap(\.entries).filter { $0.drawingURL != nil }
+        return drawings.allSatisfy { drawing in
+            room.players.filter { $0.id != drawing.authorID }.allSatisfy { room.ratings?[drawing.id]?[$0.id] != nil }
+        }
+    }
+    public var ranking: [(Player, Int)] {
+        guard let room else { return [] }
+        return room.players.map { player in
+            let score = room.chains.flatMap(\.entries).filter { $0.authorID == player.id && $0.drawingURL != nil }
+                .reduce(0) { $0 + (room.ratings?[$1.id]?.values.reduce(0, +) ?? 0) }
+            return (player, score)
+        }.sorted {
+            if $0.1 != $1.1 { return $0.1 > $1.1 }
+            if let ranks = room.podiumTieRanks { return (ranks[$0.0.id] ?? 99) < (ranks[$1.0.id] ?? 99) }
+            func coinKey(_ id: String) -> UInt64 {
+                (room.id + id).utf8.reduce(UInt64(14_695_981_039_346_656_037)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }
+            }
+            return coinKey($0.0.id) < coinKey($1.0.id)
+        }
+    }
+    public func rate(drawingID: String, stars: Int) async {
+        guard let room, let playerID else { return }
+        do { try await service.rate(roomID: room.id, drawingID: drawingID, voterID: playerID, stars: stars) }
+        catch { errorMessage = error.localizedDescription }
+    }
+    public func voteDrawingTime(_ seconds: Int) async {
+        guard let room, let playerID else { return }
+        do { try await service.voteDrawingTime(roomID: room.id, voterID: playerID, seconds: seconds) }
+        catch { errorMessage = error.localizedDescription }
+    }
+    public func voteEarlyStart(_ start: Bool) async {
+        guard let room, let playerID else { return }
+        do { try await service.voteEarlyStart(roomID: room.id, voterID: playerID, start: start) }
+        catch { errorMessage = error.localizedDescription }
+    }
     public var previousEntry: ChainEntry? {
         guard let turn = activeTurn else { return nil }
         return room?.chains.first(where: { $0.id == turn.chainID })?.entries.last(where: { $0.id != turn.id })
