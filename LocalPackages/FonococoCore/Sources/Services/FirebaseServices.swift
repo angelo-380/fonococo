@@ -3,10 +3,13 @@ import FirebaseCore
 import FirebaseAuth
 import FirebaseDatabase
 import UIKit
+import GoogleSignIn
 
-@MainActor public final class FirebaseAuthService: EmailAuthServicing, SessionRestoringAuthServicing {
+@MainActor public final class FirebaseAuthService: EmailAuthServicing, SessionRestoringAuthServicing, GoogleAuthServicing {
     private let auth: Auth
     public init(auth: Auth) { self.auth = auth }
+    public var isCurrentUserAnonymous: Bool { auth.currentUser?.isAnonymous ?? false }
+    public var isGoogleLinked: Bool { auth.currentUser?.providerData.contains(where: { $0.providerID == "google.com" }) ?? false }
     public func signInAnonymously() async throws -> Player {
         if let user = auth.currentUser { return Player(id: user.uid, nickname: user.displayName ?? "") }
         let result = try await auth.signInAnonymously()
@@ -15,7 +18,7 @@ import UIKit
     public func signOut() throws { try auth.signOut() }
     public func restoreSession() async throws -> Player? {
         guard let user = auth.currentUser else { return nil }
-        let nickname = user.displayName ?? user.email?.components(separatedBy: "@").first ?? "Jugador"
+        let nickname = user.providerData.contains(where: { $0.providerID == "google.com" }) ? "Jugador" : (user.displayName ?? user.email?.components(separatedBy: "@").first ?? "Jugador")
         return Player(id: user.uid, nickname: nickname)
     }
     public func signIn(email: String, password: String) async throws -> Player {
@@ -29,6 +32,57 @@ import UIKit
         try await request.commitChanges()
         return Player(id: result.user.uid, nickname: nickname)
     }
+    public func updateNickname(_ nickname: String) async throws -> Player {
+        guard let user = auth.currentUser, !user.isAnonymous else { throw ServiceError.unauthorized }
+        let request = user.createProfileChangeRequest()
+        request.displayName = nickname
+        try await request.commitChanges()
+        return Player(id: user.uid, nickname: nickname)
+    }
+    public func sendPasswordReset(to email: String) async throws {
+        try await auth.sendPasswordReset(withEmail: email)
+    }
+    public func changePassword(current: String, new: String) async throws {
+        guard let user = auth.currentUser, let email = user.email else { throw ServiceError.unauthorized }
+        let credential = EmailAuthProvider.credential(withEmail: email, password: current)
+        try await user.reauthenticate(with: credential)
+        try await user.updatePassword(to: new)
+    }
+    public func signInWithGoogle() async throws -> Player {
+        guard let clientID = FirebaseApp.app()?.options.clientID else {
+            throw AppEnvironment.ConfigurationError.missing("CLIENT_ID de Google")
+        }
+        guard let controller = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
+                .flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController else { throw ServiceError.configuration }
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: controller)
+        guard let idToken = result.user.idToken?.tokenString else { throw ServiceError.invalidResponse }
+        let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: result.user.accessToken.tokenString)
+        let signed = try await auth.signIn(with: credential)
+        return Player(id: signed.user.uid, nickname: "Jugador")
+    }
+    public func linkGoogleToCurrentUser() async throws -> Player {
+        guard let current = auth.currentUser,
+              let clientID = FirebaseApp.app()?.options.clientID else { throw ServiceError.unauthorized }
+        if isGoogleLinked { return Player(id: current.uid, nickname: current.displayName ?? "Jugador") }
+        guard let controller = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
+                .flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController else { throw ServiceError.configuration }
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: controller)
+        guard let idToken = result.user.idToken?.tokenString else { throw ServiceError.invalidResponse }
+        let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: result.user.accessToken.tokenString)
+        do {
+            let linked = try await current.link(with: credential)
+            return Player(id: linked.user.uid, nickname: linked.user.displayName ?? current.displayName ?? "Jugador")
+        } catch {
+            guard (error as NSError).code == AuthErrorCode.credentialAlreadyInUse.rawValue else { throw error }
+            // The Google identity already belongs to another Firebase UID. Both identities
+            // are proven by the current session and the fresh Google credential.
+            let signed = try await auth.signIn(with: credential)
+            return Player(id: signed.user.uid, nickname: signed.user.displayName ?? "Jugador")
+        }
+    }
+    public func handleGoogleURL(_ url: URL) -> Bool { GIDSignIn.sharedInstance.handle(url) }
 }
 
 @MainActor public final class FirebaseRoomService: RoomServicing {
@@ -67,7 +121,7 @@ import UIKit
             if room.players.contains(where: { $0.id == player.id }) { return room }
             guard room.phase == .lobby, let limit = room.settings?.playerLimit,
                   (2...8).contains(limit), room.players.count < limit else { throw ServiceError.invalidPayload }
-            return RoomSnapshot(id: room.id, phase: .lobby, players: room.players + [player], settings: room.settings)
+            return RoomSnapshot(id: room.id, phase: .lobby, players: room.players + [player], settings: room.settings, drawingTimeVotes: room.drawingTimeVotes, timeTieWinner: room.timeTieWinner, earlyStartVotes: room.earlyStartVotes, earlyStartTieWinner: room.earlyStartTieWinner, earlyStartDecision: room.earlyStartDecision)
         }
     }
     public func updatePlayerLimit(roomID: String, playerID: String, limit: Int) async throws {
@@ -77,7 +131,7 @@ import UIKit
             guard room.players.first?.id == playerID else { throw ServiceError.unauthorized }
             guard room.phase == .lobby, limit >= room.players.count, let settings = room.settings else { throw ServiceError.invalidPayload }
             let nextSettings = RoomSettings(playerLimit: limit, writingSeconds: settings.writingSeconds, drawingSeconds: settings.drawingSeconds)
-            return RoomSnapshot(id: room.id, phase: room.phase, players: room.players, turns: room.turns, chains: room.chains, deadline: room.deadline, settings: nextSettings)
+            return RoomSnapshot(id: room.id, phase: room.phase, players: room.players, turns: room.turns, chains: room.chains, deadline: room.deadline, settings: nextSettings, drawingTimeVotes: room.drawingTimeVotes, timeTieWinner: room.timeTieWinner, earlyStartVotes: room.earlyStartVotes, earlyStartTieWinner: room.earlyStartTieWinner, earlyStartDecision: room.earlyStartDecision)
         }
     }
     public func start(roomID: String, playerID: String) async throws {
@@ -97,6 +151,52 @@ import UIKit
         try await mutate(roomID: roomID) { room in
             guard let room else { throw ServiceError.missingRoom }
             return try GameEngine.contribute(room, entry: entry, turnID: turnID, now: Date())
+        }
+    }
+    public func rate(roomID: String, drawingID: String, voterID: String, stars: Int) async throws {
+        guard (0...5).contains(stars) else { throw ServiceError.invalidPayload }
+        let coin = UInt64.random(in: UInt64.min...UInt64.max)
+        try await mutate(roomID: roomID) { room in
+            guard let room else { throw ServiceError.missingRoom }
+            guard room.phase == .revealing, room.players.contains(where: { $0.id == voterID }),
+                  room.chains.flatMap(\.entries).contains(where: { $0.id == drawingID && $0.drawingURL != nil && $0.authorID != voterID }) else { throw ServiceError.unauthorized }
+            var ratings = room.ratings ?? [:]
+            ratings[drawingID, default: [:]][voterID] = stars
+            let ranks = room.podiumTieRanks ?? GameEngine.podiumTieRanks(room, ratings: ratings, coin: coin)
+            return RoomSnapshot(id: room.id, phase: room.phase, players: room.players, turns: room.turns, chains: room.chains, deadline: room.deadline, settings: room.settings, ratings: ratings, podiumTieRanks: ranks)
+        }
+    }
+    public func voteDrawingTime(roomID: String, voterID: String, seconds: Int) async throws {
+        guard [30, 50, 80, 120].contains(seconds) else { throw ServiceError.invalidPayload }
+        let coin = Bool.random()
+        try await mutate(roomID: roomID) { room in
+            guard let room, room.phase == .lobby, room.players.contains(where: { $0.id == voterID }), let old = room.settings else { throw ServiceError.unauthorized }
+            var votes = room.drawingTimeVotes ?? [:]
+            votes[voterID] = seconds
+            let count = Dictionary(grouping: votes.values, by: { $0 }).mapValues(\.count)
+            let highest = count.values.max() ?? 0
+            let leaders = count.filter { $0.value == highest }.keys.sorted()
+            let tie = leaders.count > 1
+            let chosen = tie ? (room.timeTieWinner.flatMap { leaders.contains($0) ? $0 : nil } ?? leaders[coin ? 0 : leaders.count - 1]) : (leaders.first ?? seconds)
+            let settings = RoomSettings(playerLimit: old.playerLimit, writingSeconds: old.writingSeconds, drawingSeconds: Double(chosen))
+            return RoomSnapshot(id: room.id, phase: .lobby, players: room.players, settings: settings, drawingTimeVotes: votes, timeTieWinner: tie ? chosen : nil)
+        }
+    }
+    public func voteEarlyStart(roomID: String, voterID: String, start: Bool) async throws {
+        let coin = Bool.random()
+        try await mutate(roomID: roomID) { room in
+            guard let room, room.phase == .lobby, room.players.count >= 2,
+                  room.players.contains(where: { $0.id == voterID }), room.earlyStartDecision == nil else { throw ServiceError.invalidPayload }
+            var votes = room.earlyStartVotes ?? [:]
+            votes[voterID] = start
+            let finished = room.players.allSatisfy { votes[$0.id] != nil }
+            let yes = votes.values.filter { $0 }.count
+            let no = votes.count - yes
+            let tie = finished && yes == no
+            let decision: Bool? = finished ? (tie ? coin : yes > no) : nil
+            return RoomSnapshot(id: room.id, phase: .lobby, players: room.players, settings: room.settings,
+                                drawingTimeVotes: room.drawingTimeVotes, timeTieWinner: room.timeTieWinner,
+                                earlyStartVotes: votes, earlyStartTieWinner: tie ? coin : nil, earlyStartDecision: decision)
         }
     }
     /// RTDB retries this transformation on concurrent writes; media uploads stay outside it.
@@ -129,6 +229,46 @@ import UIKit
         }
     }
 
+}
+
+@MainActor public final class FirebaseMatchmakingService {
+    private let database: Database
+    private let rooms: FirebaseRoomService
+    public init(database: Database) { self.database = database; rooms = FirebaseRoomService(database: database) }
+
+    public func match(player: Player) async throws -> (roomID: String, deadline: Date) {
+        let queue = database.reference().child("matchmaking").child("current")
+        let now = Date().timeIntervalSince1970
+        let old = (try await queue.getData().value as? [String: Any]) ?? [:]
+        if let id = old["roomID"] as? String, let started = old["started"] as? TimeInterval,
+           let snapshot = try? await database.reference().child("rooms").child(id).child("snapshot").getData(),
+           let room = try? RoomSnapshotCodec.decode(snapshot.value as Any), room.phase == .lobby,
+           room.players.count < (room.settings?.playerLimit ?? 8) {
+            try await rooms.join(roomID: id, player: player)
+            return (id, Date(timeIntervalSince1970: started + 80))
+        }
+        let candidate = String(UUID().uuidString.prefix(8)).uppercased()
+        try await rooms.create(roomID: candidate, player: player,
+                               settings: RoomSettings(playerLimit: 8, writingSeconds: 60, drawingSeconds: 80))
+        let staleID = old["roomID"] as? String
+        let chosen: [String: Any] = try await withCheckedThrowingContinuation { continuation in
+            queue.runTransactionBlock({ data in
+                let current = data.value as? [String: Any]
+                if current == nil || current?["roomID"] as? String == staleID {
+                    data.value = ["roomID": candidate, "started": now]
+                }
+                return TransactionResult.success(withValue: data)
+            }, andCompletionBlock: { error, committed, snapshot in
+                if let error { continuation.resume(throwing: error) }
+                else if !committed || snapshot == nil { continuation.resume(throwing: ServiceError.invalidResponse) }
+                else { continuation.resume(returning: snapshot?.value as? [String: Any] ?? [:]) }
+            }, withLocalEvents: false)
+        }
+        guard let id = chosen["roomID"] as? String,
+              let started = chosen["started"] as? TimeInterval else { throw ServiceError.invalidResponse }
+        if id != candidate { try await rooms.join(roomID: id, player: player) }
+        return (id, Date(timeIntervalSince1970: started + 80))
+    }
 }
 
 @MainActor public final class RealtimeMediaService: MediaStorageServicing {
@@ -203,6 +343,14 @@ private final class TransactionFailure: @unchecked Sendable {
     public static func rooms() throws -> FirebaseRoomService {
         guard let app = FirebaseApp.app() else { throw ServiceError.configuration }
         return FirebaseRoomService(database: try database(app: app))
+    }
+    public static func matchmaking() throws -> FirebaseMatchmakingService {
+        guard let app = FirebaseApp.app() else { throw ServiceError.configuration }
+        return FirebaseMatchmakingService(database: try database(app: app))
+    }
+    public static func social() throws -> FirebaseSocialService {
+        guard let app = FirebaseApp.app() else { throw ServiceError.configuration }
+        return FirebaseSocialService(database: try database(app: app))
     }
     public static func media(userID: String) throws -> RealtimeMediaService {
         guard let app = FirebaseApp.app() else { throw ServiceError.configuration }

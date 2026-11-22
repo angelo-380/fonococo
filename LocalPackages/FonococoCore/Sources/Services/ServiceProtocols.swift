@@ -26,6 +26,15 @@ public enum ServiceError: LocalizedError {
 @MainActor public protocol EmailAuthServicing: AuthServicing {
     func signIn(email: String, password: String) async throws -> Player
     func createAccount(email: String, password: String, nickname: String) async throws -> Player
+    func updateNickname(_ nickname: String) async throws -> Player
+    func sendPasswordReset(to email: String) async throws
+    func changePassword(current: String, new: String) async throws
+}
+@MainActor public protocol GoogleAuthServicing: AuthServicing {
+    var isGoogleLinked: Bool { get }
+    func signInWithGoogle() async throws -> Player
+    func linkGoogleToCurrentUser() async throws -> Player
+    func handleGoogleURL(_ url: URL) -> Bool
 }
 @MainActor public protocol RoomServicing {
     func create(roomID: String, player: Player, settings: RoomSettings) async throws
@@ -35,6 +44,9 @@ public enum ServiceError: LocalizedError {
     func advance(roomID: String) async throws
     func observe(roomID: String) -> AsyncThrowingStream<RoomSnapshot, Error>
     func submit(roomID: String, entry: ChainEntry, turnID: String) async throws
+    func rate(roomID: String, drawingID: String, voterID: String, stars: Int) async throws
+    func voteDrawingTime(roomID: String, voterID: String, seconds: Int) async throws
+    func voteEarlyStart(roomID: String, voterID: String, start: Bool) async throws
 }
 @MainActor public protocol MediaStorageServicing {
     func download(_ url: URL) async throws -> Data

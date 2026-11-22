@@ -9,6 +9,7 @@ import Foundation
     private let service: any AuthServicing
 
     public init(service: any AuthServicing) { self.service = service }
+    public var isGoogleLinked: Bool { (service as? any GoogleAuthServicing)?.isGoogleLinked ?? false }
 
     public func restoreSession() async {
         guard player == nil, state != .loading,
@@ -37,6 +38,23 @@ import Foundation
             player = Player(id: identity.id, nickname: name)
             state = .lobby
         } catch { fail(error.localizedDescription) }
+    }
+
+    /// Enters the app as a local guest when Firebase anonymous auth is unavailable.
+    public func signInAsGuest(nickname: String) async {
+        guard state != .loading else { return }
+        let name = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { fail("No se pudo generar el apodo de invitado."); return }
+        state = .loading
+        errorMessage = nil
+        do {
+            let identity = try await service.signInAnonymously()
+            player = Player(id: identity.id, nickname: name)
+            self.nickname = name
+            state = .lobby
+        } catch {
+            playAsLocalGuest(nickname: name)
+        }
     }
 
     public func signIn(email: String, password: String) async {
@@ -79,6 +97,37 @@ import Foundation
         guard !name.isEmpty else { return }
         player = Player(id: current.id, nickname: name)
         self.nickname = name
+    }
+    public func updateNickname(_ nickname: String) async throws {
+        guard let service = service as? any EmailAuthServicing else { throw ServiceError.configuration }
+        let updated = try await service.updateNickname(nickname)
+        player = updated
+        self.nickname = updated.nickname
+    }
+    public func sendPasswordReset(to email: String) async throws {
+        guard let service = service as? any EmailAuthServicing else { throw ServiceError.configuration }
+        try await service.sendPasswordReset(to: email.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+    public func changePassword(current: String, new: String) async throws {
+        guard let service = service as? any EmailAuthServicing else { throw ServiceError.configuration }
+        try await service.changePassword(current: current, new: new)
+    }
+    public func signInWithGoogle() async {
+        guard let service = service as? any GoogleAuthServicing else { fail("Google requiere Firebase configurado."); return }
+        state = .loading; errorMessage = nil
+        do { player = try await service.signInWithGoogle(); state = .lobby }
+        catch { fail(error.localizedDescription) }
+    }
+    @discardableResult public func linkGoogleToCurrentUser() async throws -> Player {
+        guard let service = service as? any GoogleAuthServicing else { throw ServiceError.configuration }
+        guard let current = player else { throw ServiceError.unauthorized }
+        let linked = try await service.linkGoogleToCurrentUser()
+        let active = Player(id: linked.id, nickname: current.nickname)
+        player = active
+        return active
+    }
+    public func handleGoogleURL(_ url: URL) -> Bool {
+        (service as? any GoogleAuthServicing)?.handleGoogleURL(url) ?? false
     }
 
     public func signOut() {
