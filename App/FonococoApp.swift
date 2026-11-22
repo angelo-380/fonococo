@@ -17,6 +17,7 @@ private struct BootstrapView: View {
             if let dependencies {
                 StageOneRootView(auth: dependencies.auth, game: dependencies.game, canvas: dependencies.canvas, album: dependencies.album, firebaseConfigured: dependencies.firebaseConfigured)
                     .modelContainer(dependencies.albums)
+                    .onOpenURL { _ = dependencies.auth.handleGoogleURL($0) }
             } else {
                 Text(message)
                 Button("Reintentar") { Task { await prepare() } }

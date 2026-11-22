@@ -52,6 +52,8 @@ public struct GameRootView: View {
     @State private var brushSize: Double = 3
     @State private var showColorDisc = false
     @State private var recordPulse = false
+    @State private var podiumCoinRotation = 0.0
+    @State private var podiumRevealed = false
 
     public init(auth: AuthViewModel, game: GameViewModel, canvas: CanvasViewModel, album: AlbumViewModel) {
         self.auth = auth; self.game = game; self.canvas = canvas; self.album = album
@@ -76,7 +78,15 @@ public struct GameRootView: View {
                     }.accessibilityLabel("Salir de partida")
 
                 }.card()
-                gameContent
+                if game.hasSubmittedCurrentTurn, game.state == .drawing || game.state == .writing {
+                    VStack(spacing: 16) {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 64)).foregroundStyle(Theme.accent)
+                        Text(game.state == .drawing ? "Dibujo enviado correctamente" : "Frase enviada")
+                            .font(.title2.bold())
+                        Text("Esperando a los demás jugadores…").font(.subheadline)
+                    }.frame(maxWidth: .infinity).padding(32).card()
+                } else if game.state == .revealing && game.allRatingsComplete { podiumScreen }
+                else { gameContent }
             } else {
                 Spacer(minLength: 70)
                 TextField("Apodo", text: $auth.nickname)
@@ -177,6 +187,24 @@ public struct GameRootView: View {
                               onPoints: { canvas.capture(points: $0) }, onError: canvas.report)
                     .frame(height: 320).background(.white, in: RoundedRectangle(cornerRadius: 22))
                     .clipShape(RoundedRectangle(cornerRadius: 22))
+                    .overlay {
+                        if showColorDisc {
+                            Color.clear.contentShape(Rectangle())
+                                .onTapGesture { withAnimation(.easeOut(duration: 0.18)) { showColorDisc = false } }
+                        }
+                    }
+                    .overlay(alignment: .bottomLeading) {
+                        if showColorDisc {
+                            ColorDisc(color: $brushColor)
+                                .frame(width: 280, height: 280)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                                .scaleEffect(0.82)
+                                .frame(width: 232, height: 232)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28))
+                                .padding(.leading, 12).padding(.bottom, 12)
+                                .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                        }
+                    }
                     .task(id: turn.id) {
                         await canvas.open(roomID: room.id, turnID: turn.id)
                         if game.timeExpired, let png = try? canvas.pngData() {
@@ -203,12 +231,6 @@ public struct GameRootView: View {
                     Slider(value: $brushSize, in: 1...40).tint(Theme.accent)
                     Text("\(Int(brushSize))").font(.caption.monospacedDigit())
                 }.onChange(of: brushSize) { _, value in canvas.width = CGFloat(value) }
-                if showColorDisc {
-                    ColorDisc(color: $brushColor)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
                 HStack {
                     Button { canvas.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                         .accessibilityLabel("Deshacer")
@@ -240,10 +262,25 @@ public struct GameRootView: View {
                             if let text = entry.text {
                                 Text(text).font(.system(size: 19, weight: .bold, design: .rounded))
                             }
-                            if let url = entry.drawingURL { DrawingPreview(url: url, album: album) }
-                            if entry.audioURL != nil {
-                                Label("Reacción grabada", systemImage: "waveform")
-                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            if let url = entry.drawingURL {
+                                DrawingPreview(url: url, album: album)
+                                if entry.authorID != game.currentPlayerID {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Calificar").font(.subheadline.bold())
+                                        let selected = game.room?.ratings?[entry.id]?[game.currentPlayerID ?? ""] ?? -1
+                                        HStack(spacing: 1) {
+                                        ForEach(0...5, id: \.self) { stars in
+                                            Button { Task { await game.rate(drawingID: entry.id, stars: stars) } } label: {
+                                                Image(systemName: stars == 0 ? "star.slash" : (stars <= selected ? "star.fill" : "star"))
+                                                    .font(.system(size: 23, weight: .semibold))
+                                                    .foregroundStyle(stars > 0 && stars <= selected ? Color.yellow : Theme.ink.opacity(0.45))
+                                                    .frame(minWidth: 44, minHeight: 48)
+                                                    .contentShape(Rectangle())
+                                            }.accessibilityLabel("\(stars) estrellas")
+                                        }
+                                        }
+                                    }
+                                }
                             }
                         }
                         .padding(11)
@@ -253,29 +290,66 @@ public struct GameRootView: View {
                 }.card()
             }
             if let room = game.room {
-                if album.recording {
-                    Button { album.stopRecording() } label: {
-                        HStack {
-                            Circle().fill(.red).frame(width: 12, height: 12).opacity(recordPulse ? 1 : 0.25)
-                                .onAppear { withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) { recordPulse = true } }
-                            Text("Detener grabación")
+                if game.allRatingsComplete {
+                    VStack(spacing: 10) {
+                        Text("Podio").font(.title.bold())
+                        ForEach(Array(game.ranking.prefix(3).enumerated()), id: \.offset) { place, result in
+                            HStack { Text(["🥇", "🥈", "🥉"][place]); Text(result.0.nickname); Spacer(); Text("\(result.1) ★") }
+                                .font(.headline).padding(12).background(.white.opacity(0.7), in: Capsule())
                         }
-                    }.buttonStyle(OrangeButton(prominent: true))
-                } else if album.reactionReady {
-                    Button("Subir reacción") { Task { await album.stopAndUpload() } }.buttonStyle(OrangeButton(prominent: true))
-                    Button("Eliminar reacción") { album.discardReaction() }.buttonStyle(OrangeButton())
+                    }.card()
                 } else {
-                    Button("Grabar reacción") { Task { await album.startRecording(roomID: room.id) } }
-                        .buttonStyle(OrangeButton()).disabled(album.busy)
+                    Text("Esperando las calificaciones de todos…").font(.subheadline).card()
                 }
-                Button("Guardar álbum offline") { Task { await album.archive(room: room, context: modelContext) } }
+                Button("Guardar álbum offline") { Task { if let ownerID = auth.player?.id { await album.archive(room: room, ownerID: ownerID, context: modelContext) } } }
                     .buttonStyle(OrangeButton(prominent: true))
-                    .disabled(album.busy || album.recording || album.reactionReady)
+                    .disabled(album.busy)
             }
         case .error:
             Text("No se pudo sincronizar la partida.").card()
             Button("Salir de sala") { game.leave() }.buttonStyle(OrangeButton(prominent: true))
         }
+    }
+
+    private var podiumScreen: some View {
+        let winners = Array(game.ranking.prefix(3))
+        let order = winners.count == 2 ? [1, 0] : [1, 0, 2]
+        let tied = zip(winners, winners.dropFirst()).contains { $0.0.1 == $0.1.1 }
+        return VStack(spacing: 24) {
+            Text("Podio final").font(.system(size: 34, weight: .black, design: .rounded))
+            if tied {
+                VStack(spacing: 6) {
+                    Text("🪙").font(.system(size: 64))
+                        .rotation3DEffect(.degrees(podiumCoinRotation), axis: (x: 0, y: 1, z: 0))
+                    Text(podiumRevealed ? "La moneda decidió el orden" : "Moneda al aire…").font(.subheadline.bold())
+                }.onAppear {
+                    podiumRevealed = false
+                    withAnimation(.easeOut(duration: 1.4)) { podiumCoinRotation = 1440 }
+                    Task { try? await Task.sleep(for: .seconds(1.8)); podiumRevealed = true }
+                }
+            }
+            if !tied || podiumRevealed { HStack(alignment: .bottom, spacing: 8) {
+                ForEach(order, id: \.self) { place in
+                    if winners.indices.contains(place) {
+                        VStack(spacing: 8) {
+                            Text(["🥇", "🥈", "🥉"][place]).font(.system(size: 40))
+                            Text(winners[place].0.nickname).font(.subheadline.bold()).lineLimit(1)
+                            Text("\(winners[place].1) ★").font(.headline)
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(LinearGradient(colors: [Theme.accent.opacity(0.8), Theme.aqua.opacity(0.65)], startPoint: .top, endPoint: .bottom))
+                                .frame(height: place == 0 ? 190 : place == 1 ? 145 : 105)
+                                .overlay(alignment: .top) { Text("\(place + 1)").font(.largeTitle.bold()).foregroundStyle(.white).padding(.top, 16) }
+                        }.frame(maxWidth: .infinity)
+                    }
+                }
+            } }
+            if let room = game.room {
+                Button("Guardar álbum offline") {
+                    Task { if let ownerID = auth.player?.id { await album.archive(room: room, ownerID: ownerID, context: modelContext) } }
+                }.buttonStyle(OrangeButton(prominent: true)).disabled(album.busy)
+            }
+            Button("Salir de sala") { game.leave() }.buttonStyle(OrangeButton())
+        }.frame(maxWidth: .infinity).padding(22).card()
     }
 
     private var countdown: some View {
