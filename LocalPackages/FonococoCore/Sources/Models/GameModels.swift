@@ -52,9 +52,16 @@ public struct RoomSnapshot: Identifiable, Codable, Sendable {
     public let chains: [GameChain]
     public let deadline: Date?
     public let settings: RoomSettings?
-    public init(id: String, phase: GamePhase, players: [Player] = [], turns: [GameTurn] = [], chains: [GameChain] = [], deadline: Date? = nil, settings: RoomSettings? = nil) {
+    public let ratings: [String: [String: Int]]?
+    public let drawingTimeVotes: [String: Int]?
+    public let timeTieWinner: Int?
+    public let podiumTieRanks: [String: Int]?
+    public let earlyStartVotes: [String: Bool]?
+    public let earlyStartTieWinner: Bool?
+    public let earlyStartDecision: Bool?
+    public init(id: String, phase: GamePhase, players: [Player] = [], turns: [GameTurn] = [], chains: [GameChain] = [], deadline: Date? = nil, settings: RoomSettings? = nil, ratings: [String: [String: Int]]? = nil, drawingTimeVotes: [String: Int]? = nil, timeTieWinner: Int? = nil, podiumTieRanks: [String: Int]? = nil, earlyStartVotes: [String: Bool]? = nil, earlyStartTieWinner: Bool? = nil, earlyStartDecision: Bool? = nil) {
         self.id = id; self.phase = phase; self.players = players; self.turns = turns
-        self.chains = chains; self.deadline = deadline; self.settings = settings
+        self.chains = chains; self.deadline = deadline; self.settings = settings; self.ratings = ratings; self.drawingTimeVotes = drawingTimeVotes; self.timeTieWinner = timeTieWinner; self.podiumTieRanks = podiumTieRanks; self.earlyStartVotes = earlyStartVotes; self.earlyStartTieWinner = earlyStartTieWinner; self.earlyStartDecision = earlyStartDecision
     }
 }
 public struct Phrase: Codable, Sendable {

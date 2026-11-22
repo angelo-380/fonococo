@@ -34,7 +34,19 @@ public struct StageOneFriend: Identifiable, Codable, Equatable, Sendable {
     public let username: String
     public let nickname: String
     public let avatar: String
-    public init(username: String, nickname: String, avatar: String) {
-        self.username = username; self.nickname = nickname; self.avatar = avatar
+    public let avatarImageData: String?
+    public let gamesPlayed: Int?
+    public let gamesWon: Int?
+    public let level: Int?
+    public let drawings: Int?
+    public let guesses: Int?
+    public let xp: Int?
+    public let creativeStreak: Int?
+    public init(username: String, nickname: String, avatar: String, avatarImageData: String? = nil,
+                gamesPlayed: Int? = nil, gamesWon: Int? = nil, level: Int? = nil,
+                drawings: Int? = nil, guesses: Int? = nil, xp: Int? = nil, creativeStreak: Int? = nil) {
+        self.username = username; self.nickname = nickname; self.avatar = avatar; self.avatarImageData = avatarImageData
+        self.gamesPlayed = gamesPlayed; self.gamesWon = gamesWon; self.level = level
+        self.drawings = drawings; self.guesses = guesses; self.xp = xp; self.creativeStreak = creativeStreak
     }
 }
