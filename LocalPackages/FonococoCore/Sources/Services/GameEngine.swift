@@ -2,6 +2,20 @@ import Foundation
 
 /// Fonococo rules. Round is zero-based: first phrase r=0, then book (i+r)%N.
 public enum GameEngine {
+    public static func podiumTieRanks(_ room: RoomSnapshot, ratings: [String: [String: Int]], coin: UInt64) -> [String: Int]? {
+        let drawings = room.chains.flatMap(\.entries).filter { $0.drawingURL != nil }
+        guard drawings.allSatisfy({ drawing in
+            room.players.filter { $0.id != drawing.authorID }.allSatisfy { ratings[drawing.id]?[$0.id] != nil }
+        }) else { return nil }
+        func coinKey(_ id: String) -> UInt64 {
+            id.utf8.reduce(coin) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }
+        }
+        let scores = room.players.map { player in
+            (player.id, drawings.filter { $0.authorID == player.id }.reduce(0) { $0 + (ratings[$1.id]?.values.reduce(0, +) ?? 0) })
+        }
+        let sorted = scores.sorted { $0.1 == $1.1 ? coinKey($0.0) < coinKey($1.0) : $0.1 > $1.1 }
+        return Dictionary(uniqueKeysWithValues: sorted.enumerated().map { ($0.element.0, $0.offset) })
+    }
     /// Gives an automatic drawing upload time to finish after the visible timer reaches zero.
     public static let drawingSubmissionGrace: TimeInterval = 15
     public static func start(_ room: RoomSnapshot, now: Date) throws -> RoomSnapshot {
