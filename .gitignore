@@ -9,6 +9,7 @@ xcuserdata/
 *.xcscmblueprint
 **/GoogleService-Info.plist
 **/Secrets.xcconfig
+EquipoPrivado/
 *.ipa
 *.dSYM/
 *.dSYM.zip
